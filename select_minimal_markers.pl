@@ -5,7 +5,7 @@ chomp $infile;
 
 if($infile !~ /[\d\D]/){ die "\n\nNo input file specified\nUsage: ./select_minimal_markers.pl marker_data.txt\n\n";}
 
-#The input data should be tab or comma separated. The first column is the marker name and the subsequent ones are genotyping scores for the varieties, 
+#The input data should be tab or comma separated. The first column is the marker name and the subsequent ones are genotyping scores for the varieties,
 #The first row is assumed to be a header with your variety names.
 
 
@@ -48,22 +48,38 @@ chomp $head;
 
 #Check to see if the last cell in the input file header has the label "type" - if it does, then remove this from the header and also from the data below
 $lastcell = $header[$hlen -1];
-if($lastcell =~ /type/){$last = pop(@header);} 
+if($lastcell =~ /type/){$last = pop(@header);}
 
 $header = join("\t", @header);
 $hlen = @header;
+
+print "hlen = $hlen\n";
 
 print FULL "ID\t$header\n";
 
 #Start reading the data here
 #The file format for the data is "Marker name -> Variety1 score  -> Variety2 score-> Variety3 score...."
-while(<IN>)
-{
-chomp;
-#Again, the REGEX will cope with comma or tab separation
-($id, @data) = split(/[\t\,]/);
+$readlines = 2;
 
-#Again, check if the last column of the header said "type" and get rid of the last data column if it did. 
+while($line = <IN>)
+{
+chomp($line);
+#Again, the REGEX will cope with comma or tab separation
+
+# I need to remove a last spurious character from the end of the line,
+# as this breaks things (last character becomes 'x')
+
+$chopped = chop($line);
+
+# then I need to add back whatever I have chopped if this is a line without
+# a newline character...
+if ($chopped =~ /[\d\w]/){
+  $line = $line.$chopped;
+}
+
+($id, @data) = split(/[\t\,]/, $line);
+
+#Again, check if the last column of the header said "type" and get rid of the last data column if it did.
 if($lastcell =~ /type/){$last = pop(@data);}
 %alleles = ();
 
@@ -77,19 +93,20 @@ foreach $cell(@data)
   $cell =~ s/^A$/0/;
   $cell =~ s/^B$/2/;
 
-  #Replace any cells which aren't 0, 1 or 2 with "x" - This will convert typical bad/missing data values such as "-1" or "NaN" to "x" 
+  #Replace any cells which aren't 0, 1 or 2 with "x" - This will convert typical bad/missing data values such as "-1" or "NaN" to "x"
   #This is imporatant as the data are converted to a single string for each marker so there must be exactly one chracter per column.
-  if($cell !~ /^[012]$/) {$cell = "x";} 
-  
+  if($cell !~ /^[012]$/) {$cell = "x";}
+
   #Make a hash list of alleles observed in this current row  which aren't bad "x" calls
   if($cell !~ /x/){$alleles{$cell}++;}
   }
+
 
 $thislen = @data;
 #Check that the header and each data row have the same number of cells, in case of file corruption. Die if not.
 if($hlen != $thislen){print "$id has length of $thislen which doesn't match header ($hlen) - check your input file\n"; die;}
 
-#Join up the genotype data cells into one single string of concatenated 0,1,2 
+#Join up the genotype data cells into one single string of concatenated 0,1,2
 $data = join("", @data);
 
 $n_alleles = keys %alleles;
@@ -100,10 +117,9 @@ $fails = 0;
 while($data =~ /x/g){$fails++;}
 $callrate = ($thislen - $fails)/$thislen;
 
-
-#Check the call rate is above threshold and we have more than one allele observed (i.e. polymorphic) 
-# and add qualifying IDs to the %pattern2id hash. Note that if any SNPs generate identical call patterns 
-# then previous IDs will get overwritten as we work through the rows: this is intentional to prevent time 
+#Check the call rate is above threshold and we have more than one allele observed (i.e. polymorphic)
+# and add qualifying IDs to the %pattern2id hash. Note that if any SNPs generate identical call patterns
+# then previous IDs will get overwritten as we work through the rows: this is intentional to prevent time
 # wasting with testing SNPs with identical call patterns.
 
 
@@ -121,32 +137,38 @@ close IN;
 
 
 #Now loop over the distinct SNP patterns to organise them by Minor Allele Frequency (MAF) score. This part is only really relevant if
-#$maxmarkers is set to fewer than the actual number of input markers, othewise all get used anyway regardless of MAF ordering. 
+#$maxmarkers is set to fewer than the actual number of input markers, othewise all get used anyway regardless of MAF ordering.
 
 # print "ID\tmaf\tcall=0\tcall=1\tcall=2\n";
-foreach $pattern(keys %pattern2id)
+foreach $pattern(sort keys %pattern2id)
  {
  #Initialise this hash each iteration time to empty it.
  %charcount = ();
  $id = $pattern2id{$pattern};
  while($pattern =~ /([012x])/g) {$charcount{$1}++;}
- $zero = $charcount{0}; 
+ $zero = $charcount{0};
  $one = $charcount{1};
  $two = $charcount{2};
  $count = $zero+$one+$two;
- #Logic steps to work out which is the second most common call, which we'll define as the minor allele.  
- if($one >= $zero && $zero >= $two){$minor = $zero;} 
+
+ #Logic steps to work out which is the second most common call, which we'll define as the minor allele.
+ if($one >= $zero && $zero >= $two){$minor = $zero;}
  elsif ($zero >= $one && $one >= $two){$minor = $one;}
  elsif ($zero >= $two && $two >= $one){$minor = $two;}
-  
+ elsif ($one >= $two && $two >= $zero){$minor = $two;}
+ elsif ($two >= $one && $one >= $zero){$minor = $one;}
+ elsif ($two >= $zero && $zero >= $one){$minor = $zero;}
+ else { die "WARNING: MISSING CONDITION! $zero : $one : $two\n";}
+
  $maf = $minor/$hlen;
-#print "$id\t$maf\t$zero\t$one\t$two\n";
+ #print "$id\t$maf\t$zero\t$one\t$two\n";
   if ($maf > $min_maf)
   {
-  push @{$orderbymaf{$maf}}, $pattern; 
+  push @{$orderbymaf{$maf}}, $pattern;
   $pattern2maf{$pattern} = $maf;
   }
 }
+
 print "Sorting by minor allele frequency..\n";
 
 
@@ -158,7 +180,7 @@ $ref = $orderbymaf{$mafscore};
 $l = @ary;
 if($count < $maxmarkers)
  {
- foreach $pattern(@ary){$id = $pattern2id{$pattern}; if($count < $maxmarkers){$selected{$pattern} = $id;} 
+ foreach $pattern(@ary){$id = $pattern2id{$pattern}; if($count < $maxmarkers){$selected{$pattern} = $id;}
    else{print "Max marker count of $maxmarkers reached, ignoring further markers\n";}$count++; }
  }
 }
@@ -186,13 +208,13 @@ print "\nIteration\tCumulativeResolved\tProportion\tMarkerID\tPattern\n";
 
 
 #This is the main loop where we iterate through all of the available rows of SNP data and find the one that adds the most new "1s" to the overall scoring matrix
-#This loop will exit when the $currentscore value is zero - i.e. adding another row doesn't add anything to the overall matrix score 
+#This loop will exit when the $currentscore value is zero - i.e. adding another row doesn't add anything to the overall matrix score
 while($currentscore > 0)
 {
 #This hash is the current working score matrix - it will be evaluated for this iteration and its contents added to the overal matrix once we have decided which SNP row is best for this iteration
 %testmatrix =();
 $bestscore = 0;
-$iteration++; 
+$iteration++;
 
 #For this iteration, go through all the markers and see which one differentiates the most varieties not differentiated in previous iterations
 #Note that $pattern1 will be the concatenated marker calls for a given marker so will look something like "011122111100002" - for 15 varieties worth of data
@@ -214,12 +236,12 @@ foreach $pattern1(sort keys %selected)
       while($j <$len)
          {
          $jchar = $pattern1[$j];
-         #If this cell in the matrix is currently set to sero, i.e. this pair of varieties (i and j) are unresolved, and their genotypes are valid and differnt, then we can set this cell in the test matrix to 1 (= resolved) - otherwise it remains set to zero. 
-         if($matrix{$i}{$j} ==0 && $ichar ne "x" && $jchar ne "x" && $ichar != $jchar) 
+         #If this cell in the matrix is currently set to sero, i.e. this pair of varieties (i and j) are unresolved, and their genotypes are valid and differnt, then we can set this cell in the test matrix to 1 (= resolved) - otherwise it remains set to zero.
+         if($matrix{$i}{$j} ==0 && $ichar ne "x" && $jchar ne "x" && $ichar != $jchar)
              {
              #If vars i and j are different, we can set their entry to "1" in the temporary holding matrix and also add 1 to the overall score for the addition of this marker
-             $testmatrix{$i}{$j}++; $score++;  
-             }  
+             $testmatrix{$i}{$j}++; $score++;
+             }
          $j++;
          }
       $i++;
@@ -229,21 +251,21 @@ foreach $pattern1(sort keys %selected)
   #If the current marker is better than others tested, it becomes the new bestscore and its matrix becomes the one to beat!
   if($score >$bestscore)
       {
-      $bestscore = $score; 
-      %bestmatrix = %testmatrix; 
-      $bestpattern = $pattern1;     
+      $bestscore = $score;
+      %bestmatrix = %testmatrix;
+      $bestpattern = $pattern1;
       }
    }
 
-      $id = $pattern2id{$bestpattern}; 
+      $id = $pattern2id{$bestpattern};
       if($bestscore >0)
          {
          $cumulative += $bestscore;
          $proportion_resolved = $cumulative/$target_size;
          $resolved = sprintf("%.6f", $proportion_resolved);
- 
-         print "$iteration\t$cumulative\t$resolved\t$id\t$bestpattern\n"; 
-         print OUT "$cumulative\t$id\t$bestpattern\n"; 
+
+         print "$iteration\t$cumulative\t$resolved\t$id\t$bestpattern\n";
+         print OUT "$cumulative\t$id\t$bestpattern\n";
          @tabbed_pattern = split(//,$bestpattern);
          $tabbed_pattern = join("\t", @tabbed_pattern);
          print FULL "$id\t$tabbed_pattern\n";
@@ -252,13 +274,13 @@ foreach $pattern1(sort keys %selected)
        $i = 0; $j = 0;
          @pattern1 = split(//, $bestpattern);
        $len = @pattern1;
-        
+
         while($i < $len)
          {
          $j = $i +1;
          while($j <$len)
             {
-            $matrix{$i}{$j} += $bestmatrix{$i}{$j};  
+            $matrix{$i}{$j} += $bestmatrix{$i}{$j};
             $j++;
             }
          $i++;

@@ -206,35 +206,34 @@ $currentscore = 1;
 
 print "\nIteration\tCumulativeResolved\tProportion\tMarkerID\tPattern\n";
 
-
 #This is the main loop where we iterate through all of the available rows of SNP data and find the one that adds the most new "1s" to the overall scoring matrix
 #This loop will exit when the $currentscore value is zero - i.e. adding another row doesn't add anything to the overall matrix score
 while($currentscore > 0)
 {
-#This hash is the current working score matrix - it will be evaluated for this iteration and its contents added to the overal matrix once we have decided which SNP row is best for this iteration
-%testmatrix =();
-$bestscore = 0;
-$iteration++;
+  #This hash is the current working score matrix - it will be evaluated for this iteration and its contents added to the overal matrix once we have decided which SNP row is best for this iteration
+  %testmatrix =();
+  $bestscore = 0;
+  $iteration++;
 
-#For this iteration, go through all the markers and see which one differentiates the most varieties not differentiated in previous iterations
-#Note that $pattern1 will be the concatenated marker calls for a given marker so will look something like "011122111100002" - for 15 varieties worth of data
-foreach $pattern1(sort keys %selected)
-   {
-   $score = 0;
-   $id = $selected{$pattern1};
-   %testmatrix =();
-   @pattern1 = split(//, $pattern1);
-   #print "$id\t$pattern1\n";
-   $i = 0; $j = 0;
-   $len = @pattern1;
-   while($i < $len)
-      {
-      $ichar = $pattern1[$i];
-      $j = $i +1;
-      #The logic here is to loop through the genotype string for this marker row and compare each position with every position to the right of it
+  #For this iteration, go through all the markers and see which one differentiates the most varieties not differentiated in previous iterations
+  #Note that $pattern1 will be the concatenated marker calls for a given marker so will look something like "011122111100002" - for 15 varieties worth of data
+  foreach $pattern1(sort keys %selected)
+  {
+    $score = 0;
+    $id = $selected{$pattern1};
+    %testmatrix =();
+    @pattern1 = split(//, $pattern1);
+    print "$id\t$pattern1\n";
+    $i = 0; $j = 0;
+    $len = @pattern1;
+    while($i < $len)
+    {
+        $ichar = $pattern1[$i];
+       $j = $i +1;
+       #The logic here is to loop through the genotype string for this marker row and compare each position with every position to the right of it
       # This will fill out one triangular half of the matrix so we end up comparing col1 with col2 then col3 but we don't waste time going back and comparing col2 to col1.
       while($j <$len)
-         {
+      {
          $jchar = $pattern1[$j];
          #If this cell in the matrix is currently set to sero, i.e. this pair of varieties (i and j) are unresolved, and their genotypes are valid and differnt, then we can set this cell in the test matrix to 1 (= resolved) - otherwise it remains set to zero.
          if($matrix{$i}{$j} ==0 && $ichar ne "x" && $jchar ne "x" && $ichar != $jchar)
@@ -243,22 +242,24 @@ foreach $pattern1(sort keys %selected)
              $testmatrix{$i}{$j}++; $score++;
              }
          $j++;
-         }
-      $i++;
       }
+      $i++;
+   }
 
-
-  #If the current marker is better than others tested, it becomes the new bestscore and its matrix becomes the one to beat!
-  if($score >$bestscore)
-      {
+   #If the current marker is better than others tested, it becomes the new bestscore and its matrix becomes the one to beat!
+   if($score >$bestscore)
+   {
       $bestscore = $score;
       %bestmatrix = %testmatrix;
       $bestpattern = $pattern1;
-      }
    }
+  }
 
-      $id = $pattern2id{$bestpattern};
-      if($bestscore >0)
+$id = $pattern2id{$bestpattern};
+
+print "best score is $bestscore\n";
+
+if($bestscore >0)
          {
          $cumulative += $bestscore;
          $proportion_resolved = $cumulative/$target_size;

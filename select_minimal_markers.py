@@ -1,6 +1,8 @@
 
+from numpy.core.numeric import tensordot
 import pandas as pd
 import numpy as np
+import copy
 
 import sys
 
@@ -65,7 +67,7 @@ df = df.applymap(
     lambda x: clean(x)
 )
 
-pattern_to_id = {}
+pattern_to_idx = {}
 
 # process each row
 for i in range(0, nrows):
@@ -92,13 +94,13 @@ for i in range(0, nrows):
         idx = df.index[i]
         pattern = "".join([str(x) for x in row])
 
-        if pattern in pattern_to_id:
+        if pattern in pattern_to_idx:
             print(f"WARNING: Duplicate pattern - {idx} "
-                  f"vs. {pattern_to_id[pattern]}")
+                  f"vs. {pattern_to_idx[pattern]}")
 
-        pattern_to_id[pattern] = idx
+        pattern_to_idx[pattern] = idx
 
-n = len(pattern_to_id)
+n = len(pattern_to_idx)
 
 print(f"Loaded marker data for {n} distinct patterns")
 
@@ -109,14 +111,14 @@ print(f"Loaded marker data for {n} distinct patterns")
 # maxmarkers is set to fewer than the actual number of input markers,
 # otherwise all get used anyway regardless of MAF ordering.
 
-keys = list(pattern_to_id.keys())
+keys = list(pattern_to_idx.keys())
 keys.sort()
 
 pattern_to_maf = {}
 order_by_maf = {}
 
 for pattern in keys:
-    idx = pattern_to_id[pattern]
+    idx = pattern_to_idx[pattern]
     zero = pattern.count("0")
     one = pattern.count("1")
     two = pattern.count("2")
@@ -166,6 +168,9 @@ for score in scores:
                 print(f"Maximum marker count {max_markers} reached! "
                       "Ignoring further markers.")
 
+# now sort the selected markers by pattern
+selected.sort()
+
 n = len(selected)
 
 print(f"{n} distinct SNP patterns selected for constructing the optimal "
@@ -184,3 +189,75 @@ print(f"{target_size} varietal comparisons")
 current_score = 1.0
 
 print("\nIteration\tCumulativeResolved\tProportion\tMarkerID\tPattern")
+
+iteration = 0
+
+# This is the main loop where we iterate through all of the available rows of
+# SNP data and find the one that adds the most new "1s" to the overall
+# scoring matrix
+# This loop will exit when the current_score value is zero - i.e. adding
+# another row doesn't add anything to the overall matrix score
+while current_score > 0:
+    # This hash is the current working score matrix - it will be evaluated
+    # for this iteration and its contents added to the overal matrix
+    # once we have decided which SNP row is best for this iteration
+    test_matrix = np.zeros((ncols, ncols))
+    best_score = 0.0
+    iteration += 1
+
+    for pattern1 in selected:
+        idx = pattern_to_idx[pattern1]
+
+        n = len(pattern1)
+
+        # The logic here is to loop through the genotype string for this
+        # marker row and compare each position with every position to
+        # the right of it
+        # This will fill out one triangular half of the matrix so we end
+        # up comparing col1 with col2 then col3 but we don't waste time
+        # going back and comparing col2 to col1.
+        for i in range(0, n):
+            ichar = pattern1[i]
+
+            for j in range(i+1, n):
+                jchar = pattern1[j]
+
+                # If this cell in the matrix is currently set to zero,
+                # i.e. this pair of varieties (i and j) are unresolved,
+                # and their genotypes are valid and different, then we can
+                # set this cell in the test matrix to 1 (= resolved) -
+                # otherwise it remains set to zero.
+                if matrix[i, j] == 0.0 and ichar != "x" and jchar != "x" \
+                        and ichar != jchar:
+                    #print(f"add {i}.{j} {ichar} {jchar} {score}")
+                    # If vars i and j are different, we can set their entry
+                    # to "1" in the temporary holding matrix and also add 1
+                    # to the overall score for the addition of this marker
+                    test_matrix[i, j] += 1.0
+                    score += 1.0
+
+        # If the current marker is better than others tested, it becomes the
+        # new bestscore and its matrix becomes the one to beat!
+        if score > best_score:
+            best_score = score
+            best_matrix = copy.deepcopy(test_matrix)
+            best_pattern = pattern1
+
+    idx = pattern_to_idx[best_pattern]
+
+    print(f"best score is {best_score}")
+
+    if best_score > 0:
+        cumulative += best_score
+        proportion_resolved = cumulative / target_size
+        resolved = "%.6f" % proportion_resolved
+
+        print(f"{iteration}\t{cumulative}\t{resolved}\t{idx}\t"
+              f"{best_pattern}")
+
+    current_score = best_score
+
+    matrix += test_matrix
+
+    best_score = 0.0
+    best_matrix = None

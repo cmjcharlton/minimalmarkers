@@ -223,7 +223,6 @@ while($currentscore > 0)
     $id = $selected{$pattern1};
     %testmatrix =();
     @pattern1 = split(//, $pattern1);
-    print "$id\t$pattern1\n";
     $i = 0; $j = 0;
     $len = @pattern1;
     while($i < $len)

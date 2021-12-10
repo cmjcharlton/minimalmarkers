@@ -177,7 +177,7 @@ print(f"{n} distinct SNP patterns selected for constructing the optimal "
       "dataset")
 
 # create the scoring matrix
-matrix = np.zeros((ncols, ncols))
+matrix = np.zeros((ncols, ncols), np.int8)
 
 print(f"Built initial scoring matrix: {matrix.shape}")
 
@@ -186,7 +186,7 @@ target_size = int((ncols * (ncols-1)) / 2)
 
 print(f"{target_size} varietal comparisons")
 
-current_score = 1.0
+current_score = 1
 
 print("\nIteration\tCumulativeResolved\tProportion\tMarkerID\tPattern")
 
@@ -201,12 +201,16 @@ while current_score > 0:
     # This hash is the current working score matrix - it will be evaluated
     # for this iteration and its contents added to the overal matrix
     # once we have decided which SNP row is best for this iteration
-    test_matrix = np.zeros((ncols, ncols))
-    best_score = 0.0
+    test_matrix = np.zeros((ncols, ncols), np.int8)
+    best_matrix = np.zeros((ncols, ncols), np.int8)
+    best_score = 0
     iteration += 1
 
     for pattern1 in selected:
         idx = pattern_to_idx[pattern1]
+
+        # zero the test_matrix
+        np.maximum(test_matrix, 0)
 
         n = len(pattern1)
 
@@ -216,31 +220,33 @@ while current_score > 0:
         # This will fill out one triangular half of the matrix so we end
         # up comparing col1 with col2 then col3 but we don't waste time
         # going back and comparing col2 to col1.
+        score = 0
+
         for i in range(0, n):
             ichar = pattern1[i]
 
-            for j in range(i+1, n):
-                jchar = pattern1[j]
+            if ichar != "x":
+                for j in range(i+1, n):
+                    jchar = pattern1[j]
 
-                # If this cell in the matrix is currently set to zero,
-                # i.e. this pair of varieties (i and j) are unresolved,
-                # and their genotypes are valid and different, then we can
-                # set this cell in the test matrix to 1 (= resolved) -
-                # otherwise it remains set to zero.
-                if matrix[i, j] == 0.0 and ichar != "x" and jchar != "x" \
-                        and ichar != jchar:
-                    #print(f"add {i}.{j} {ichar} {jchar} {score}")
-                    # If vars i and j are different, we can set their entry
-                    # to "1" in the temporary holding matrix and also add 1
-                    # to the overall score for the addition of this marker
-                    test_matrix[i, j] += 1.0
-                    score += 1.0
+                    # If this cell in the matrix is currently set to zero,
+                    # i.e. this pair of varieties (i and j) are unresolved,
+                    # and their genotypes are valid and different, then we can
+                    # set this cell in the test matrix to 1 (= resolved) -
+                    # otherwise it remains set to zero.
+                    if jchar != "x" and ichar != jchar and matrix[i, j] == 0:
+                        # print(f"add {i}.{j} {ichar} {jchar} {score}")
+                        # If vars i and j are different, we can set their entry
+                        # to "1" in the temporary holding matrix and also add 1
+                        # to the overall score for the addition of this marker
+                        test_matrix[i, j] += 1
+                        score += 1
 
         # If the current marker is better than others tested, it becomes the
         # new bestscore and its matrix becomes the one to beat!
         if score > best_score:
             best_score = score
-            best_matrix = copy.deepcopy(test_matrix)
+            np.copyto(best_matrix, test_matrix, casting="no")
             best_pattern = pattern1
 
     idx = pattern_to_idx[best_pattern]

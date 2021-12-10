@@ -257,42 +257,56 @@ print(f"{len(selected)} distinct SNP patterns selected for "
 
 # create the scoring matrix
 ncols: int = len(selected[0])
-matrix = np.zeros((ncols, ncols), np.int8)
-
-print(f"Built initial scoring matrix: {matrix.shape}")
 
 perfect_score: int = int((ncols * (ncols-1)) / 2)
 
 print(f"{perfect_score} varietal comparisons")
 
-print("\nIteration\tCumulativeResolved\tProportion\tMarkerID\tPattern")
 
-# This is the main loop where we iterate through all of the available rows of
-# SNP data and find the one that adds the most new "1s" to the overall
-# scoring matrix
-# This loop will exit when the current_score value is zero - i.e. adding
-# another row doesn't add anything to the overall matrix score
-iteration: int = 0
-cumulative_score: int = 0
-current_score: int = 1
+def find_best_patterns(patterns, print_progress: bool = True):
+    """This is the main function where we iterate through all of the
+       available rows of SNP data and find the one that adds the most
+       new "1s" to the overall scoring matrix. This function will return
+       when the current_score value is zero - i.e. adding
+       another row doesn't add anything to the overall matrix score.
 
-while current_score > 0:
-    # This hash is the current working score matrix - it will be evaluated
-    # for this iteration and its contents added to the overal matrix
-    # once we have decided which SNP row is best for this iteration
-    iteration += 1
+       This return the sorted list of best patterns, plus the
+       matrix showing what is being distinguished
+    """
 
-    (best_score, best_pattern) = score_patterns(patterns, matrix)
+    if print_progress:
+        print("\nIteration\tCumulativeResolved\tProportion\tMarkerID\tPattern")
 
-    idx = pattern_to_idx[selected[best_pattern]]
+    matrix = np.zeros((ncols, ncols), np.int8)
 
-    if best_score > 0:
-        cumulative_score += best_score
-        proportion_resolved = cumulative_score / perfect_score
-        matrix += create_matrix(patterns[best_pattern], matrix)
+    iteration: int = 0
+    cumulative_score: int = 0
+    current_score: int = 1
 
-        print(f"{iteration}\t{cumulative_score}\t"
-              f"{proportion_resolved:.6f}\t{idx}\t"
-              f"{selected[best_pattern]}")
+    best_patterns = []
 
-    current_score: int = best_score
+    while current_score > 0:
+        iteration += 1
+
+        (best_score, best_pattern) = score_patterns(patterns, matrix)
+
+        if best_score > 0:
+            cumulative_score += best_score
+            proportion_resolved = cumulative_score / perfect_score
+            best_patterns.append(best_pattern)
+            matrix += create_matrix(patterns[best_pattern], matrix)
+
+            if print_progress:
+                pattern = get_pattern_from_array(patterns[best_pattern])
+                pattern_id = pattern_to_idx[pattern]
+
+                print(f"{iteration}\t{cumulative_score}\t"
+                      f"{proportion_resolved:.6f}\t"
+                      f"{pattern_id}\t{pattern}")
+
+        current_score: int = best_score
+
+    return (best_patterns, matrix)
+
+
+(best_patterns, matrix) = find_best_patterns(patterns)

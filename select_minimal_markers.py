@@ -55,16 +55,26 @@ def clean(x):
     except Exception:
         pass
 
-    return "x"
+    return -1
 
 
-# Replace any cells which aren't 0, 1 or 2 with "x" - This will
-# convert typical bad/missing data values such as "-1" or "NaN" to "x"
+# Replace any cells which aren't 0, 1 or 2 with -1 - This will
+# convert typical bad/missing data values such as "NaN" to -1
 # This is imporatant as the data are converted to a single string for
 # each marker so there must be exactly one chracter per column.
 df = df.applymap(
     lambda x: clean(x)
 )
+
+
+def get_pattern_from_array(array):
+    """Return a pattern encoded as an integer array
+       into a string - this converts values less than
+       0 into x
+    """
+    pattern = [str(x) if x >= 0 else "x" for x in array]
+    return "".join(pattern)
+
 
 pattern_to_idx = {}
 
@@ -77,8 +87,8 @@ for i in range(0, nrows):
     counts = row.value_counts()
 
     for key in counts.keys():
-        if key == "x":
-            fails = int(counts["x"])
+        if key == -1:
+            fails = int(counts[-1])
         else:
             alleles[key] = int(counts[key])
 
@@ -91,7 +101,7 @@ for i in range(0, nrows):
     if n_alleles > 1 and call_rate > min_call_rate:
         # turn the data into a single string that contains the pattern
         idx = df.index[i]
-        pattern = "".join([str(x) for x in row])
+        pattern = get_pattern_from_array(row)
 
         if pattern in pattern_to_idx:
             print(f"WARNING: Duplicate pattern - {idx} "

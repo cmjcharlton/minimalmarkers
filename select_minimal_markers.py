@@ -138,7 +138,6 @@ def sort_and_filter_patterns(patterns,
     order_by_maf = {}
 
     for pattern in keys:
-        idx = patterns[pattern]
         zero: int = pattern.count("0")
         one: int = pattern.count("1")
         two: int = pattern.count("2")
@@ -188,7 +187,7 @@ def sort_and_filter_patterns(patterns,
                           "Ignoring further markers.")
 
     # now sort the selected markers by pattern
-    selected.sort()
+    # selected.sort()
 
     # copy the patterns into a numpy array
     pattern_matrix = _np.zeros((len(selected), len(selected[0])), _np.int8)
@@ -210,7 +209,7 @@ def sort_and_filter_patterns(patterns,
 
 
 @_numba.jit(nopython=True, nogil=True, fastmath=True, parallel=True)
-def score_patterns(patterns, matrix):
+def score_patterns(patterns, matrix, skip_patterns):
     """Do the work of scoring all of the passed patterns against
        the current value of the matrix. This returns a tuple
        of the best score and the index of the pattern with
@@ -222,19 +221,23 @@ def score_patterns(patterns, matrix):
     scores = _np.zeros(npatterns, _np.int32)
 
     for p in _numba.prange(0, npatterns):
-        score: int = 0
+        if not skip_patterns[p]:
+            score: int = 0
 
-        for i in range(0, ncols):
-            ival: int = patterns[p, i]
+            for i in range(0, ncols):
+                ival: int = patterns[p, i]
 
-            if ival != -1:
-                for j in range(i+1, ncols):
-                    jval: int = patterns[p, j]
+                if ival != -1:
+                    for j in range(i+1, ncols):
+                        jval: int = patterns[p, j]
 
-                    score += (jval != -1 and ival != jval and
-                              matrix[i, j] == 0)
+                        score += (jval != -1 and ival != jval and
+                                  matrix[i, j] == 0)
 
-        scores[p] = score
+            scores[p] = score
+
+            if score == 0:
+                skip_patterns[p] = 1
 
     best_score: int = 0
     best_pattern: int = 0
@@ -243,6 +246,8 @@ def score_patterns(patterns, matrix):
         if scores[i] > best_score:
             best_score = scores[i]
             best_pattern = i
+
+    skip_patterns[best_pattern] = 1
 
     return (best_score, best_pattern)
 
@@ -304,10 +309,13 @@ def find_best_patterns(patterns, pattern_ids,
 
     best_patterns = []
 
+    skip_patterns = _np.zeros(len(patterns))
+
     while current_score > 0:
         iteration += 1
 
-        (best_score, best_pattern) = score_patterns(patterns, matrix)
+        (best_score, best_pattern) = score_patterns(patterns, matrix,
+                                                    skip_patterns)
 
         if best_score > 0:
             cumulative_score += best_score

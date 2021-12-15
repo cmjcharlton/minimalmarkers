@@ -2,6 +2,12 @@
 import numba as _numba
 import numpy as _np
 
+try:
+    from tqdm import tqdm as _tqdm
+except Exception:
+    def _tqdm(arg):
+        return arg
+
 
 def get_pattern_from_array(array) -> str:
     """Return a pattern encoded as an integer array
@@ -29,7 +35,8 @@ def get_pattern_from_array(array) -> str:
 
 def load_patterns(filename: str,
                   min_call_rate: float = 0.9,
-                  print_progress: bool = False):
+                  print_progress: bool = False,
+                  show_progress: bool = False):
     """Load all of the patterns from the passed file.
        The patterns will be converted to the correct format,
        including cleaning / conversion of A, B, AB converted
@@ -63,9 +70,14 @@ def load_patterns(filename: str,
     duplicates = {}
     rowlen: int = -1
 
-    from tqdm import tqdm
+    if not show_progress:
+        def tqdm(x):
+            return x
+        progress = tqdm
+    else:
+        progress = _tqdm
 
-    for i in tqdm(range(0, nrows)):
+    for i in progress(range(0, nrows)):
         alleles = {}
         fails: int = 0
 
@@ -106,7 +118,8 @@ def load_patterns(filename: str,
 def sort_and_filter_patterns(patterns,
                              max_markers: int = 1000000000000,
                              min_maf: float = 0.001,
-                             print_progress: bool = False):
+                             print_progress: bool = False,
+                             show_progress: bool = False):
     """Now loop over the distinct SNP patterns to organise them by
        Minor Allele Frequency (MAF) score.
 
@@ -192,9 +205,14 @@ def sort_and_filter_patterns(patterns,
     pattern_matrix = _np.zeros((len(selected), len(selected[0])), _np.int8)
     pattern_ids = []
 
-    from tqdm import tqdm
+    if not show_progress:
+        def tqdm(x):
+            return x
+        progress = tqdm
+    else:
+        progress = _tqdm
 
-    for i in tqdm(range(0, len(selected))):
+    for i in progress(range(0, len(selected))):
         pattern = selected[i]
         pattern_ids.append(patterns[pattern])
 
@@ -346,13 +364,15 @@ if __name__ == "__main__":
         print("USAGE: python select_minimal_markers.py genotypes.csv")
         sys.exit(0)
 
-    patterns = load_patterns(input_file, print_progress=True)
+    patterns = load_patterns(input_file, print_progress=True,
+                             show_progress=True)
 
     print(f"{len(patterns)} distinct SNP patterns selected for "
           "constructing the optimal dataset")
 
     (patterns, pattern_ids) = sort_and_filter_patterns(patterns,
-                                                       print_progress=True)
+                                                       print_progress=True,
+                                                       show_progress=True)
 
     (best_patterns, matrix) = find_best_patterns(patterns,
                                                  pattern_ids,

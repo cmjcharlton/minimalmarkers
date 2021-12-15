@@ -8,7 +8,22 @@ def get_pattern_from_array(array) -> str:
        into a string - this converts values less than
        0 into x
     """
-    pattern = [str(x) if x >= 0 else "x" for x in array]
+
+    # Common formats are A, B for homozygotes (AA and BB) and AB for
+    # heterozygotes or 0,1,2 for hom AA, het AB and hom BB.
+    # We're going to convert A AB B to 0,1,2 format from here on
+
+    values = {"0": "0",
+              "1": "1",
+              "2": "2",
+              0: "0",
+              1: "1",
+              2: "2",
+              "AB": "1",
+              "A": "0",
+              "B": "2"}
+
+    pattern = [values.get(x, "x") for x in array]
     return "".join(pattern)
 
 
@@ -34,72 +49,56 @@ def load_patterns(filename: str,
 
     # Read in the data - assume this is comma separated for now. Can
     # easily add a test to change to tab separated if needed
+    if print_progress:
+        print(f"Loading '{input_file}'...")
+
     df = pd.read_csv(input_file, index_col="code")
 
-    # Common formats are A, B for homozygotes (AA and BB) and AB for
-    # heterozygotes or 0,1,2 for hom AA, het AB and hom BB.
-    # We're going to convert A AB B to 0,1,2 format from here on
-    df = df.replace("AB", 1).replace("A", 0).replace("B", 2)
-
-    def clean(x: any) -> int:
-        """Quick cleaning function that returns 0, 1, 2 if x is
-           0, 1 or 2, or returns -1 if it is any other value
-        """
-
-        try:
-            xi: int = int(x)
-            if xi >= 0 and xi <= 2:
-                return xi
-        except Exception:
-            pass
-
-        return -1
-
-    # Replace any cells which aren't 0, 1 or 2 with -1 - This will
-    # convert typical bad/missing data values such as "NaN" to -1
-    # This is imporatant as the data are converted to a single string for
-    # each marker so there must be exactly one chracter per column.
-    df = df.applymap(
-        lambda x: clean(x)
-    )
-
-    patterns = {}
-
     # process each row
-    nrows: int = df.shape[0]
+    if print_progress:
+        print(f"Data read! Processing rows...")
 
-    for i in range(0, nrows):
+    nrows: int = df.shape[0]
+    patterns = {}
+    duplicates = {}
+    rowlen: int = -1
+
+    from tqdm import tqdm
+
+    for i in tqdm(range(0, nrows)):
         alleles = {}
         fails: int = 0
 
-        row = df.iloc[i]
-        counts = row.value_counts()
+        pattern = get_pattern_from_array(df.iloc[i])
 
-        for key in counts.keys():
-            if key == -1:
-                fails: int = int(counts[-1])
+        if pattern in patterns:
+            if pattern in duplicates:
+                duplicates[pattern].append(df.index[i])
             else:
-                alleles[key] = int(counts[key])
+                duplicates[pattern] = [df.index[i]]
+            next
 
-        n_alleles: int = len(alleles.keys())
+        fails: int = pattern.count("x")
 
-        rowlen: int = len(row)
+        n_alleles = 0
+
+        for allele in ["0", "1", "2"]:
+            if pattern.count(allele) > 0:
+                n_alleles += 1
+
+        if rowlen == -1:
+            rowlen = len(pattern)
+        else:
+            if rowlen != len(pattern):
+                print(f"WARNING: Wrong rowlen! {len(pattern)}")
 
         call_rate: float = float(rowlen - fails) / rowlen
 
         if n_alleles > 1 and call_rate > min_call_rate:
-            # turn the data into a single string that contains the pattern
-            idx = df.index[i]
-            pattern = get_pattern_from_array(row)
-
-            if pattern in patterns:
-                print(f"WARNING: Duplicate pattern - {idx} "
-                      f"vs. {patterns[pattern]}")
-
-            patterns[pattern] = idx
+            patterns[pattern] = df.index[i]
 
     if print_progress:
-        print(f"Loaded marker data for {len(patterns)} distinct patterns")
+        print(f"\nLoaded marker data for {len(patterns)} distinct patterns")
 
     return patterns
 
@@ -193,7 +192,9 @@ def sort_and_filter_patterns(patterns,
     pattern_matrix = _np.zeros((len(selected), len(selected[0])), _np.int8)
     pattern_ids = []
 
-    for i in range(0, len(selected)):
+    from tqdm import tqdm
+
+    for i in tqdm(range(0, len(selected))):
         pattern = selected[i]
         pattern_ids.append(patterns[pattern])
 

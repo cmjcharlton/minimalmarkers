@@ -2,11 +2,15 @@
 import numba as _numba
 import numpy as _np
 
+
+def _no_progress_bar(x):
+    return x
+
+
 try:
-    from tqdm import tqdm as _tqdm
+    from tqdm import tqdm as _progress_bar
 except Exception:
-    def _tqdm(arg):
-        return arg
+    _progress_bar = _no_progress_bar
 
 
 def get_pattern_from_array(array) -> str:
@@ -35,8 +39,7 @@ def get_pattern_from_array(array) -> str:
 
 def load_patterns(filename: str,
                   min_call_rate: float = 0.9,
-                  print_progress: bool = False,
-                  show_progress: bool = False):
+                  print_progress: bool = False):
     """Load all of the patterns from the passed file.
        The patterns will be converted to the correct format,
        including cleaning / conversion of A, B, AB converted
@@ -57,7 +60,10 @@ def load_patterns(filename: str,
     # Read in the data - assume this is comma separated for now. Can
     # easily add a test to change to tab separated if needed
     if print_progress:
+        progress = _progress_bar
         print(f"Loading '{input_file}'...")
+    else:
+        progress = _no_progress_bar
 
     df = pd.read_csv(input_file, index_col="code")
 
@@ -69,13 +75,6 @@ def load_patterns(filename: str,
     patterns = {}
     duplicates = {}
     rowlen: int = -1
-
-    if not show_progress:
-        def tqdm(x):
-            return x
-        progress = tqdm
-    else:
-        progress = _tqdm
 
     for i in progress(range(0, nrows)):
         alleles = {}
@@ -110,7 +109,7 @@ def load_patterns(filename: str,
             patterns[pattern] = df.index[i]
 
     if print_progress:
-        print(f"\nLoaded marker data for {len(patterns)} distinct patterns")
+        print(f"\nLoaded marker data for {len(patterns)} distinct patterns\n")
 
     return patterns
 
@@ -118,8 +117,7 @@ def load_patterns(filename: str,
 def sort_and_filter_patterns(patterns,
                              max_markers: int = 1000000000000,
                              min_maf: float = 0.001,
-                             print_progress: bool = False,
-                             show_progress: bool = False):
+                             print_progress: bool = False):
     """Now loop over the distinct SNP patterns to organise them by
        Minor Allele Frequency (MAF) score.
 
@@ -183,6 +181,9 @@ def sort_and_filter_patterns(patterns,
 
     if print_progress:
         print("Sorting by minor allele frequency..")
+        progress = _progress_bar
+    else:
+        progress = _no_progress_bar
 
     scores = list(order_by_maf.keys())
     scores.sort()
@@ -204,13 +205,6 @@ def sort_and_filter_patterns(patterns,
     # copy the patterns into a numpy array
     pattern_matrix = _np.zeros((len(selected), len(selected[0])), _np.int8)
     pattern_ids = []
-
-    if not show_progress:
-        def tqdm(x):
-            return x
-        progress = tqdm
-    else:
-        progress = _tqdm
 
     for i in progress(range(0, len(selected))):
         pattern = selected[i]
@@ -317,7 +311,7 @@ def find_best_patterns(patterns, pattern_ids,
     perfect_score: int = int((ncols * (ncols-1)) / 2)
 
     if print_progress:
-        print(f"{perfect_score} varietal comparisons")
+        print(f"\n{perfect_score} varietal comparisons")
         print("\nIteration\tCumulativeResolved\tProportion\tMarkerID\tPattern")
 
     matrix = _np.zeros((ncols, ncols), _np.int8)
@@ -364,15 +358,13 @@ if __name__ == "__main__":
         print("USAGE: python select_minimal_markers.py genotypes.csv")
         sys.exit(0)
 
-    patterns = load_patterns(input_file, print_progress=True,
-                             show_progress=True)
+    patterns = load_patterns(input_file, print_progress=True)
 
     print(f"{len(patterns)} distinct SNP patterns selected for "
           "constructing the optimal dataset")
 
     (patterns, pattern_ids) = sort_and_filter_patterns(patterns,
-                                                       print_progress=True,
-                                                       show_progress=True)
+                                                       print_progress=True)
 
     (best_patterns, matrix) = find_best_patterns(patterns,
                                                  pattern_ids,

@@ -219,7 +219,8 @@ def sort_and_filter_patterns(patterns,
 
 
 @_numba.jit(nopython=True, nogil=True, fastmath=True, parallel=True)
-def _calculate_best_score(patterns, thread_matrix, start: int, end: int):
+def _calculate_best_possible_score(patterns, thread_matrix,
+                                   start: int, end: int):
     """Calculate the best possible score that could be achieved
        using all of the patterns
     """
@@ -255,7 +256,7 @@ def _calculate_best_score(patterns, thread_matrix, start: int, end: int):
     return score
 
 
-def calculate_best_score(patterns, print_progress: bool = False):
+def calculate_best_possible_score(patterns, print_progress: bool = False):
     npatterns: int = patterns.shape[0]
     ncols: int = patterns.shape[1]
     perfect_score: int = int((ncols * (ncols-1)) / 2)
@@ -285,7 +286,8 @@ def calculate_best_score(patterns, print_progress: bool = False):
                       unit="patterns", unit_scale=chunk_size):
         start: int = i * chunk_size
         end: int = min((i+1)*chunk_size, npatterns)
-        score = _calculate_best_score(patterns, thread_matrix, start, end)
+        score = _calculate_best_possible_score(patterns, thread_matrix,
+                                               start, end)
 
         if score == perfect_score:
             if print_progress:
@@ -390,13 +392,17 @@ def find_best_patterns(patterns, pattern_ids,
     if print_progress:
         print("\nCalculating the best possible score (slow)...")
 
-    best_score = calculate_best_score(patterns, print_progress=print_progress)
+    best_possible_score: int = calculate_best_possible_score(
+                                    patterns, print_progress=print_progress)
 
     if print_progress:
-        print(f"The best possible score is {best_score}")
+        print(f"The best possible score is {best_possible_score}. This would "
+              f"resolve {100.0*best_possible_score/perfect_score:.4f}% "
+              "of varieties.")
 
     if print_progress:
-        print(f"\n{perfect_score} varietal comparisons")
+        print(f"\n{perfect_score} varietal comparisons of which "
+              f"{best_possible_score} can be resolved.")
         print("\nIteration\tCumulativeResolved\tProportion\tMarkerID\tPattern")
 
     matrix = _np.zeros((ncols, ncols), _np.int8)
@@ -426,10 +432,19 @@ def find_best_patterns(patterns, pattern_ids,
                 pattern_id = pattern_ids[best_pattern]
 
                 print(f"{iteration}\t{cumulative_score}\t"
-                      f"{proportion_resolved:.6f}\t"
+                      f"{100.0*proportion_resolved:.4f}%\t"
                       f"{pattern_id}\t{pattern}")
 
+            if cumulative_score == best_possible_score:
+                break
+
         current_score: int = best_score
+
+    if cumulative_score != best_possible_score:
+        print("\n\nWARNING: The algorithm should have been able to find a set "
+              f"of patterns that resolved {best_possible_score} varieties "
+              f"but was only able to resolve {cumulative_score} varieties. "
+              "This suggests a bug or error in the program!\n")
 
     return (best_patterns, matrix)
 

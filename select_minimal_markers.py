@@ -199,9 +199,6 @@ def sort_and_filter_patterns(patterns,
                     print(f"Maximum marker count {max_markers} reached! "
                           "Ignoring further markers.")
 
-    # now sort the selected markers by pattern
-    # selected.sort()
-
     # copy the patterns into a numpy array
     pattern_matrix = _np.zeros((len(selected), len(selected[0])), _np.int8)
     pattern_ids = []

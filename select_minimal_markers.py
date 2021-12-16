@@ -1,6 +1,8 @@
 
 import numba as _numba
+from numba.np.ufunc.decorators import vectorize
 import numpy as _np
+from numpy.core.fromnumeric import var
 
 
 def _no_progress_bar(x, **kwargs):
@@ -71,6 +73,7 @@ def load_patterns(filename: str,
     if print_progress:
         print(f"Data read! Processing rows...")
 
+    varieties = list(df.columns)
     nrows: int = df.shape[0]
     patterns = {}
     duplicates = {}
@@ -111,7 +114,7 @@ def load_patterns(filename: str,
     if print_progress:
         print(f"\nLoaded marker data for {len(patterns)} distinct patterns\n")
 
-    return patterns
+    return (patterns, varieties)
 
 
 def sort_and_filter_patterns(patterns,
@@ -485,7 +488,7 @@ if __name__ == "__main__":
         print("USAGE: python select_minimal_markers.py genotypes.csv")
         sys.exit(0)
 
-    patterns = load_patterns(input_file, print_progress=True)
+    (patterns, varieties) = load_patterns(input_file, print_progress=True)
 
     print(f"{len(patterns)} distinct SNP patterns selected for "
           "constructing the optimal dataset")
@@ -496,3 +499,22 @@ if __name__ == "__main__":
     (best_patterns, matrix) = find_best_patterns(patterns,
                                                  pattern_ids,
                                                  print_progress=True)
+
+    print(f"\nProcessing complete! Writing output")
+
+    for idx in best_patterns:
+        pattern = "\t".join(get_pattern_from_array(patterns[idx]))
+        pattern_id = pattern_ids[idx]
+
+        print(f"{pattern_id}\t{pattern}")
+
+    # Want to write out a nice visualisation that shows how each
+    # additional pattern distinguishes more varieties... The data
+    # for this is, I think, a 3D matrix (not what is below)
+
+    #print("ID\t" + "\t".join(varieties))
+
+    #for i in range(0, len(best_patterns)):
+    #    resolves = "\t".join([str(x) for x in matrix[i, :]])
+    #    pattern_id = pattern_ids[best_patterns[i]]
+    #    print(f"{pattern_id}\t{resolves}")

@@ -297,21 +297,13 @@ def calculate_best_possible_score(patterns, print_progress: bool = False):
     return score
 
 
-
-
 @_numba.jit(nopython=True, nogil=True, fastmath=True, parallel=True)
-def score_patterns(patterns, matrix, skip_patterns):
-    """Do the work of scoring all of the passed patterns against
-       the current value of the matrix. This returns a tuple
-       of the best score and the index of the pattern with
-       that best score
-    """
+def _score_patterns(patterns, matrix, skip_patterns,
+                    scores, start, end):
     npatterns: int = patterns.shape[0]
     ncols: int = patterns.shape[1]
 
-    scores = _np.zeros(npatterns, _np.int32)
-
-    for p in _numba.prange(0, npatterns):
+    for p in _numba.prange(start, end):
         if not skip_patterns[p]:
             score: int = 0
 
@@ -329,6 +321,41 @@ def score_patterns(patterns, matrix, skip_patterns):
 
             if score == 0:
                 skip_patterns[p] = 1
+
+
+def score_patterns(patterns, matrix, skip_patterns,
+                   print_progress: bool = True):
+    """Do the work of scoring all of the passed patterns against
+       the current value of the matrix. This returns a tuple
+       of the best score and the index of the pattern with
+       that best score
+    """
+    npatterns: int = patterns.shape[0]
+    scores = _np.zeros(npatterns, _np.int32)
+
+    if print_progress:
+        chunk_size = min(1000, npatterns)
+        progress = _progress_bar
+    else:
+        chunk_size = npatterns
+        progress = _no_progress_bar
+
+    nchunks: int = int(npatterns / chunk_size)
+
+    while nchunks*chunk_size < npatterns:
+        nchunks += 1
+
+    if nchunks < 4:
+        nchunks = 1
+        chunk_size = npatterns
+        progress = _no_progress_bar
+
+    for i in progress(range(0, nchunks), delay=1,
+                      unit="patterns", unit_scale=chunk_size):
+        start: int = i * chunk_size
+        end: int = min((i+1)*chunk_size, npatterns)
+        _score_patterns(patterns, matrix, skip_patterns,
+                        scores, start, end)
 
     best_score: int = 0
     best_pattern: int = 0

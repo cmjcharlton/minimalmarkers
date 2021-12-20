@@ -96,7 +96,7 @@ def _calculate_mafs(data,
         nalleles: int = (zeros != 0) + (ones != 0) + (twos != 0)
         call_rate: float = float(ncols - fails) / ncols
 
-        if nalleles <= 1 or call_rate <= min_call_rate:
+        if nalleles <= 1 or call_rate < min_call_rate:
             mafs[i] = 0
         else:
             # Logic steps to work out which is the second most common
@@ -345,7 +345,8 @@ def load_patterns(input_file: str,
 
     if print_progress:
         print(f"\nLoaded marker data for {patterns.shape[0]} "
-              "distinct patterns\n")
+              "distinct patterns that have a sufficiently high "
+              "MAF and call rate to be worth including.\n")
 
     class Patterns:
         def __init__(self, patterns, ids, varieties, mafs, duplicates):
@@ -821,6 +822,9 @@ if __name__ == "__main__":
 
     (patterns, pattern_ids) = sort_and_filter_patterns(patterns,
                                                        print_progress=True)
+
+    print(f"{patterns.shape[0]} unique patterns to search through once "
+          "minimum MAF and call_rate are accounted for.")
 
     data = load_patterns(input_file,
                          # min_call_rate,

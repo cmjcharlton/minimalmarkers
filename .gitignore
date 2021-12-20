@@ -1,2 +1,4 @@
 AppleGenotypes_minimal_markers.txt
 AppleGenotypes_selected_markers_with_headers.txt
+*.nbi
+*.nbc

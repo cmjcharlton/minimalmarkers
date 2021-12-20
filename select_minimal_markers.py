@@ -114,10 +114,10 @@ def _calculate_mafs(data,
             elif twos >= zeros and zeros >= ones:
                 minor: int = zeros
             else:
-                print("INVALID CONDITION!")
+                print("PROGRAM BUG!!! INVALID CONDITION!")
                 minor: int = 0
 
-            if minor < min_maf * nrows:
+            if minor < min_maf * ncols:
                 # eliminate patterns with too low a maf
                 minor = 0
 
@@ -160,6 +160,7 @@ def _sort_patterns(data, mafs,
 
     order[0] = sorted_idxs[0]
     npatterns: int = 1
+    nduplicates: int = 0
 
     for i in range(1, nrows):
         idx: int = sorted_idxs[i]
@@ -203,6 +204,8 @@ def _sort_patterns(data, mafs,
                     print("Maximum marker count reached! "
                           "Ignoring further markers.")
                     break
+        else:
+            nduplicates += 1
 
     # remove invalid patterns
     order = order[order != -1]
@@ -344,8 +347,6 @@ def load_patterns(input_file: str,
         print(f"\nLoaded marker data for {patterns.shape[0]} "
               "distinct patterns\n")
 
-    print(duplicates)
-
     class Patterns:
         def __init__(self, patterns, ids, varieties, mafs, duplicates):
             self.patterns = patterns
@@ -431,8 +432,6 @@ def orig_load_patterns(input_file: str,
 
         if n_alleles > 1 and call_rate >= min_call_rate:
             patterns[pattern] = df.index[i]
-
-    print(duplicates)
 
     if print_progress:
         print(f"\nLoaded marker data for {len(patterns)} distinct patterns\n")
@@ -524,7 +523,7 @@ def sort_and_filter_patterns(patterns,
             for pattern in order_by_maf[score]:
                 if len(selected) < max_markers:
                     selected.append(pattern)
-                else:
+                elif print_progress:
                     print(f"Maximum marker count {max_markers} reached! "
                           "Ignoring further markers.")
 

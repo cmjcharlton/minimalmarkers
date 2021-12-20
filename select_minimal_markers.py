@@ -1,4 +1,5 @@
 
+from enum import Enum
 import numba as _numba
 from numba.np.ufunc.decorators import vectorize
 import numpy as _np
@@ -155,6 +156,7 @@ def _sort_patterns(data, mafs,
         return None
 
     order = _np.full(nrows, fill_value=-1, dtype=_np.int32)
+    duplicates = _np.full(nrows, fill_value=-1, dtype=_np.int32)
 
     order[0] = sorted_idxs[0]
     npatterns: int = 1
@@ -176,7 +178,7 @@ def _sort_patterns(data, mafs,
             if maf != mafs[last_idx]:
                 # there are no more patterns with the same maf score
                 break
-            else:
+            elif duplicates[last_idx] == -1:
                 # is this equal to any of the previous patterns
                 # that has the same maf score?
                 all_same: int = 1
@@ -189,11 +191,18 @@ def _sort_patterns(data, mafs,
                 if all_same == 1:
                     # this is a duplicate pattern
                     new_pattern = 0
+                    duplicates[idx] = last_idx
                     break
 
         if new_pattern == 1:
             order[npatterns] = idx
             npatterns += 1
+
+            if npatterns >= max_markers:
+                if i != nrows-1:
+                    print("Maximum marker count reached! "
+                          "Ignoring further markers.")
+                    break
 
     # remove invalid patterns
     order = order[order != -1]
@@ -209,7 +218,7 @@ def _sort_patterns(data, mafs,
         for j in range(0, ncols):
             patterns[i, j] = data[idx, j]
 
-    return (patterns, order)
+    return (patterns, order, duplicates)
 
 
 def load_patterns(input_file: str,
@@ -302,31 +311,53 @@ def load_patterns(input_file: str,
     mafs = _calculate_mafs(data, min_call_rate=min_call_rate,
                            min_maf=min_maf, print_progress=print_progress)
 
-    (patterns, order) = _sort_patterns(data, mafs, max_markers=max_markers,
-                                       print_progress=print_progress)
+    (patterns, order, dups) = _sort_patterns(data, mafs,
+                                             max_markers=max_markers,
+                                             print_progress=print_progress)
 
     sorted_ids = []
     sorted_mafs = []
+    duplicates = {}
 
     for idx in order:
         sorted_ids.append(ids[idx])
         sorted_mafs.append(mafs[idx] / ncols)
 
+    for i, dup in enumerate(dups):
+        if dup != -1:
+            same = _np.array_equal(data[dup], data[i])
+
+            if not same:
+                print("WARNING: Program bug. Two patterns which are "
+                      "flagged as identical aren't the same! "
+                      f"{dup} and {i}")
+                assert(same)
+
+            canonical = ids[dup]
+
+            if canonical in duplicates:
+                duplicates[canonical].append(ids[i])
+            else:
+                duplicates[canonical] = [ids[i]]
+
     if print_progress:
         print(f"\nLoaded marker data for {patterns.shape[0]} "
               "distinct patterns\n")
 
+    print(duplicates)
+
     class Patterns:
-        def __init__(self, patterns, ids, varieties, mafs):
+        def __init__(self, patterns, ids, varieties, mafs, duplicates):
             self.patterns = patterns
             self.ids = ids
             self.varieties = varieties
             self.mafs = mafs
+            self.duplicates = duplicates
 
     assert(len(sorted_ids) == patterns.shape[0])
     assert(len(varieties) == patterns.shape[1])
 
-    return Patterns(patterns, sorted_ids, varieties, sorted_mafs)
+    return Patterns(patterns, sorted_ids, varieties, sorted_mafs, duplicates)
 
 
 def orig_load_patterns(input_file: str,
@@ -398,8 +429,10 @@ def orig_load_patterns(input_file: str,
 
         call_rate: float = float(rowlen - fails) / rowlen
 
-        if n_alleles > 1 and call_rate > min_call_rate:
+        if n_alleles > 1 and call_rate >= min_call_rate:
             patterns[pattern] = df.index[i]
+
+    print(duplicates)
 
     if print_progress:
         print(f"\nLoaded marker data for {len(patterns)} distinct patterns\n")
@@ -796,13 +829,8 @@ if __name__ == "__main__":
                          # max_mafs,
                          print_progress=True)
 
-    for i in range(0, len(pattern_ids)):
-        p = pattern_ids[i]
-        q = data.ids[i]
-
-        j = data.ids.index(p)
-
-        print(f"{p} : {q} : {i} : {j} : {data.mafs[i]:.4f} : {data.mafs[j]:.4f}")
+    assert(patterns.shape[0] == data.patterns.shape[0])
+    assert(patterns.shape[1] == data.patterns.shape[1])
 
     (best_patterns, matrix) = find_best_patterns(data.patterns,
                                                  data.ids,

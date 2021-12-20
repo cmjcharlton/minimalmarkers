@@ -1,9 +1,25 @@
 
-import numba as _numba
-import numpy as _np
+try:
+    from dataclasses import dataclass
+    from typing import List, Dict
+except ImportError:
+    print("This script requires newer features of Python, as provided "
+          "by the dataclasses and typing modules. Please upgrade to "
+          "at least Python 3.6 and try again.")
 
-from dataclasses import dataclass
-from typing import List, Dict
+try:
+    import numba as _numba
+except ImportError:
+    print("This script requires numba to accelerate key parts. "
+          "Please install numba (e.g. via 'conda install numba' "
+          "or 'pip install numba' and try again.")
+
+try:
+    import numpy as _np
+except ImportError:
+    print("This script requires numpy to accelerate key parts. "
+          "Please install numpy (e.g. via 'conda install numpy' or "
+          "'pip install numpy' and try again.")
 
 
 def _no_progress_bar(x, **kwargs):
@@ -102,9 +118,14 @@ def _calculate_mafs(data,
        returned as an array of integers. You need to divide this by the number
        of varieties to get the proper MAF.
     """
+    if data is None:
+        return None
 
     nrows: int = data.shape[0]
     ncols: int = data.shape[1]
+
+    if nrows == 0 or ncols == 0:
+        return None
 
     mafs = _np.zeros((nrows), _np.int32)
 
@@ -176,10 +197,10 @@ def _sort_patterns(data, mafs,
 
     if data.shape[0] != nrows:
         print("CORRUPT DATA!")
-        return None
+        return (None, None, None)
 
     if nrows == 0:
-        return None
+        return (None, None, None)
 
     # Get the indicies of the sorted mafs. Numpy sorts in increasing
     # order, but we need decreasing order (hence the [::-1])
@@ -189,7 +210,7 @@ def _sort_patterns(data, mafs,
     # to find and remove duplicates, plus ones where the
     # maf is zero.
     if mafs[0] == 0:
-        return None
+        return (None, None, None)
 
     order = _np.full(nrows, fill_value=-1, dtype=_np.int32)
     duplicates = _np.full(nrows, fill_value=-1, dtype=_np.int32)
@@ -359,6 +380,13 @@ def load_patterns(input_file: str,
     (patterns, order, dups) = _sort_patterns(data, mafs,
                                              max_markers=max_markers,
                                              print_progress=print_progress)
+
+    if patterns is None:
+        if print_progress:
+            print("\nWARNING! There are no patterns that exceeded "
+                  f"the required criteria (min_maf = {min_maf}, "
+                  f"min_call_rate = {min_call_rate}).\n")
+        return None
 
     sorted_ids = []
     sorted_mafs = []
@@ -682,22 +710,56 @@ def find_best_patterns(patterns: Patterns,
 
 
 if __name__ == "__main__":
-    # Get the filename from the command line
-    try:
-        import sys
-        input_file: str = sys.argv[1]
-    except Exception:
-        print("USAGE: python select_minimal_markers.py genotypes.csv")
-        sys.exit(0)
+    import argparse
+
+    parser = argparse.ArgumentParser(
+                prog="select_minimal_markers.py",
+                description="Find the minimal set "
+                            "of markers needed to distinguish between "
+                            "varieties."
+                            )
+
+    parser.add_argument("input_file", metavar="input_file",
+                        type=str, nargs=1,
+                        help="The input file containing the markers "
+                             "to be processed.")
+
+    parser.add_argument("--min_call_rate", nargs="?", type=float, default=0.9,
+                        const=1,
+                        help="The minimum call rate needed of a pattern "
+                             "to make it worth processing. "
+                             f"Default value is 0.9.")
+
+    parser.add_argument("--min_maf", nargs="?", type=float, default=0.001,
+                        const=1,
+                        help="The minimum Minor Allele Frequency of a "
+                             "pattern needed to make it worth processing. "
+                             f"Default value is 0.001.")
+
+    parser.add_argument("--max_markers", nargs="?", type=int,
+                        default=1000000000000, const=1,
+                        help="The maximum number of markers to process. "
+                             "Markers are first sorted by MAF, so any "
+                             "markers with a low MAF after max_markers "
+                             "will be discarded before processing. Default "
+                             f"value is 1000000000000.")
+
+    args = parser.parse_args()
+
+    input_file = args.input_file[0]
 
     patterns = load_patterns(input_file,
-                             # min_call_rate,
-                             # min_maf,
-                             # max_mafs,
+                             min_call_rate=args.min_call_rate,
+                             min_maf=args.min_maf,
+                             max_markers=args.max_markers,
                              print_progress=True)
 
-    (best_patterns, matrix) = find_best_patterns(patterns,
-                                                 print_progress=True)
+    if patterns is None:
+        best_patterns = []
+        matrix = None
+    else:
+        (best_patterns, matrix) = find_best_patterns(patterns,
+                                                     print_progress=True)
 
     # print(f"\nProcessing complete! Writing output")
 

@@ -209,7 +209,7 @@ def _sort_patterns(data, mafs,
     # We have to assume that the data is already sorted - need
     # to find and remove duplicates, plus ones where the
     # maf is zero.
-    if mafs[0] == 0:
+    if mafs[sorted_idxs[0]] == 0:
         return (None, None, None)
 
     order = _np.full(nrows, fill_value=-1, dtype=_np.int32)
@@ -220,6 +220,12 @@ def _sort_patterns(data, mafs,
     nduplicates: int = 0
 
     for i in range(1, nrows):
+        if npatterns >= max_markers:
+            if i != nrows-1:
+                print("Maximum marker count reached! "
+                      "Ignoring further markers.")
+                break
+
         idx: int = sorted_idxs[i]
         maf: int = mafs[idx]
 
@@ -255,12 +261,6 @@ def _sort_patterns(data, mafs,
         if new_pattern == 1:
             order[npatterns] = idx
             npatterns += 1
-
-            if npatterns >= max_markers:
-                if i != nrows-1:
-                    print("Maximum marker count reached! "
-                          "Ignoring further markers.")
-                    break
         else:
             nduplicates += 1
 
@@ -377,6 +377,11 @@ def load_patterns(input_file: str,
     mafs = _calculate_mafs(data, min_call_rate=min_call_rate,
                            min_maf=min_maf, print_progress=print_progress)
 
+    if print_progress:
+        num_eliminated: int = len(mafs[mafs == 0])
+        print("\nNumber of eliminated patterns (by min_call_rate, min_maf or "
+              f"requiring more than one allele) is {num_eliminated}.")
+
     (patterns, order, dups) = _sort_patterns(data, mafs,
                                              max_markers=max_markers,
                                              print_progress=print_progress)
@@ -429,7 +434,7 @@ def load_patterns(input_file: str,
 
 
 @_numba.jit(nopython=True, nogil=True, fastmath=True,
-            parallel=True, cache=True)
+            parallel=False, cache=True)
 def _calculate_best_possible_score(patterns, thread_matrix,
                                    start: int, end: int):
     """Calculate the best possible score that could be achieved
@@ -438,7 +443,7 @@ def _calculate_best_possible_score(patterns, thread_matrix,
     ncols: int = patterns.shape[1]
 
     nthreads: int = _numba.config.NUMBA_NUM_THREADS
-    chunk_size: int = int((end - start) / nthreads)
+    chunk_size: int = int((end - start) / nthreads) + 1
 
     for thread_id in _numba.prange(0, nthreads):
         matrix = thread_matrix[thread_id]
@@ -647,7 +652,7 @@ def find_best_patterns(patterns: Patterns,
 
     # estimate the best score...
     if print_progress:
-        print("\nCalculating the best possible score (slow)...")
+        print("\nCalculating the best possible score...")
 
     best_possible_score: int = calculate_best_possible_score(
                                     patterns, print_progress=print_progress)

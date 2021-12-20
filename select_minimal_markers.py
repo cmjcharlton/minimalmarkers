@@ -40,7 +40,7 @@ def get_pattern_from_array(array) -> str:
 
 
 @_numba.jit(nopython=True, nogil=True, fastmath=True)
-def copy_into_row(row, data, i):
+def _copy_into_row(row, data, i):
     ncols: int = len(row)
 
     for j in range(0, ncols):
@@ -48,10 +48,10 @@ def copy_into_row(row, data, i):
 
 
 @_numba.jit(nopython=True, nogil=True, fastmath=True, parallel=True)
-def calculate_mafs(data,
-                   min_call_rate: float = 0.9,
-                   min_maf: float = 0.001,
-                   print_progress: bool = False):
+def _calculate_mafs(data,
+                    min_call_rate: float = 0.9,
+                    min_maf: float = 0.001,
+                    print_progress: bool = False):
     """Now loop over the distinct SNP patterns to calculate their
        Minor Allele Frequency (MAF) score.
 
@@ -66,10 +66,10 @@ def calculate_mafs(data,
        of varieties to get the proper MAF.
     """
 
-    ncols: int = data.shape[0]
-    nrows: int = data.shape[1]
+    nrows: int = data.shape[0]
+    ncols: int = data.shape[1]
 
-    maf = _np.zeros((nrows), _np.int32)
+    mafs = _np.zeros((nrows), _np.int32)
 
     # Go through in parallel and calculate maf for
     # each pattern. Patterns that should be skipped
@@ -96,7 +96,7 @@ def calculate_mafs(data,
         call_rate: float = float(ncols - fails) / ncols
 
         if nalleles <= 1 or call_rate <= min_call_rate:
-            maf[i] = 0
+            mafs[i] = 0
         else:
             # Logic steps to work out which is the second most common
             # call, which we'll define as the minor allele.
@@ -120,16 +120,215 @@ def calculate_mafs(data,
                 # eliminate patterns with too low a maf
                 minor = 0
 
-            maf[i] = minor
+            mafs[i] = minor
 
-    return maf
+    return mafs
 
 
-def load_patterns(filename: str,
+@_numba.jit(nopython=True, nogil=True, fastmath=True)
+def _sort_patterns(data, mafs,
+                   max_markers: int,
+                   print_progress: bool = False):
+    """Return a numpy array of indicies that would represent
+       the array of data sorted by maf. Note that this will
+       remove duplicates and anything that has a maf score
+       of zero
+    """
+    nrows: int = len(mafs)
+    ncols: int = data.shape[1]
+
+    if data.shape[0] != nrows:
+        print("CORRUPT DATA!")
+        return None
+
+    if nrows == 0:
+        return None
+
+    # Get the indicies of the sorted mafs. Numpy sorts in increasing
+    # order, but we need decreasing order (hence the [::-1])
+    sorted_idxs = _np.argsort(mafs)[::-1]
+
+    # We have to assume that the data is already sorted - need
+    # to find and remove duplicates, plus ones where the
+    # maf is zero.
+    if mafs[0] == 0:
+        return None
+
+    order = _np.full(nrows, fill_value=-1, dtype=_np.int32)
+
+    order[0] = sorted_idxs[0]
+    npatterns: int = 1
+
+    for i in range(1, nrows):
+        idx: int = sorted_idxs[i]
+        maf: int = mafs[idx]
+
+        if maf == 0:
+            continue
+
+        # is this a duplicate of any that are above with the same
+        # maf score?
+        new_pattern: int = 1
+
+        for j in range(i-1, -1, -1):
+            last_idx: int = sorted_idxs[j]
+
+            if maf != mafs[last_idx]:
+                # there are no more patterns with the same maf score
+                break
+            else:
+                # is this equal to any of the previous patterns
+                # that has the same maf score?
+                all_same: int = 1
+
+                for k in range(0, ncols):
+                    if data[idx, k] != data[last_idx, k]:
+                        all_same = 0
+                        break
+
+                if all_same == 1:
+                    # this is a duplicate pattern
+                    new_pattern = 0
+                    break
+
+        if new_pattern == 1:
+            order[npatterns] = idx
+            npatterns += 1
+
+    # remove invalid patterns
+    order = order[order != -1]
+
+    npatterns: int = len(order)
+
+    # now copy the patterns, in order, to the output array
+    patterns = _np.zeros((npatterns, ncols), _np.int8)
+
+    for i in range(0, npatterns):
+        idx = order[i]
+
+        for j in range(0, ncols):
+            patterns[i, j] = data[idx, j]
+
+    return (patterns, order)
+
+
+def load_patterns(input_file: str,
                   min_call_rate: float = 0.9,
                   min_maf: float = 0.001,
                   max_markers: int = 1000000000000,
                   print_progress: bool = False):
+    """Load all of the patterns from the passed file.
+       The patterns will be converted to the correct format,
+       including cleaning / conversion of A, B, AB converted
+       to 0, 1, 2 format.
+
+       The patterns with a poor call_rate will be removed.
+
+       min_call_rate: Ignore markers with less than this proportion
+                      of valid (0, 1 of 2 ) calls.
+                      (Bad calls might be encoded as -1 or NaN)
+
+       This will return a dictionary of unique patterns.
+       The keys will be the patterns, and the values
+       are the IDs of the patterns.
+    """
+    # Read in the data - assume this is comma separated for now. Can
+    # easily add a test to change to tab separated if needed
+    if print_progress:
+        progress = _progress_bar
+        print(f"Loading '{input_file}'...")
+    else:
+        progress = _no_progress_bar
+
+    import csv
+
+    lines = open(input_file, "r").readlines()
+
+    dialect = csv.Sniffer().sniff(lines[0], delimiters=[" ", ",", "\t"])
+
+    # the varieties are the column headers (minus the first column
+    # which is the ID code for the pattern)
+    varieties = []
+
+    for variety in list(csv.reader([lines[0]], dialect=dialect))[0][1:]:
+        varieties.append(variety.lstrip().rstrip())
+
+    ids = []
+    nrows = len(lines) - 1
+    ncols = len(varieties)
+
+    data = _np.full((nrows, ncols), -1, _np.int8)
+
+    if print_progress:
+        print(f"Reading {nrows} patterns for {ncols} varieties...")
+        progress = _progress_bar
+    else:
+        progress = _no_progress_bar
+
+    values = {"0": "0",
+              "1": "1",
+              "2": "2",
+              0: "0",
+              1: "1",
+              2: "2",
+              "AB": "1",
+              "A": "0",
+              "B": "2"}
+
+    npatterns = 0
+
+    row = _np.zeros(ncols)
+
+    for i in progress(range(1, nrows+1), unit="patterns", delay=1):
+        parts = list(csv.reader([lines[i]], dialect=dialect))[0]
+
+        if len(parts) != ncols+1:
+            print("WARNING - invalid row! "
+                  f"'{parts}' : {len(parts)} vs {ncols}")
+        else:
+            ids.append(parts[0])
+
+            for j in range(0, ncols):
+                row[j] = values.get(parts[j+1], -1)
+
+            _copy_into_row(row, data, npatterns)
+
+            npatterns += 1
+
+    if print_progress:
+        print(f"Successfully read {npatterns} patterns.\n")
+        print(f"Calculating MAFs, removing duplicates and sorting patterns...")
+
+    mafs = _calculate_mafs(data, min_call_rate=min_call_rate,
+                           min_maf=min_maf, print_progress=print_progress)
+
+    (patterns, order) = _sort_patterns(data, mafs, max_markers=max_markers,
+                                       print_progress=print_progress)
+
+    sorted_ids = []
+
+    for idx in order:
+        sorted_ids.append(ids[idx])
+
+    if print_progress:
+        print(f"\nLoaded marker data for {patterns.shape[0]} "
+              "distinct patterns\n")
+
+    class Patterns:
+        def __init__(self, patterns, ids, varieties):
+            self.patterns = patterns
+            self.ids = ids
+            self.varieties = varieties
+
+    assert(len(sorted_ids) == patterns.shape[0])
+    assert(len(varieties) == patterns.shape[1])
+
+    return Patterns(patterns, sorted_ids, varieties)
+
+
+def orig_load_patterns(input_file: str,
+                       min_call_rate: float = 0.9,
+                       print_progress: bool = False):
     """Load all of the patterns from the passed file.
        The patterns will be converted to the correct format,
        including cleaning / conversion of A, B, AB converted
@@ -154,69 +353,6 @@ def load_patterns(filename: str,
         print(f"Loading '{input_file}'...")
     else:
         progress = _no_progress_bar
-
-    import csv
-
-    lines = open(input_file, "r").readlines()
-
-    dialect = csv.Sniffer().sniff(lines[0], delimiters=[" ", ",", "\t"])
-
-    linenum = 0
-    varieties = list(csv.reader([lines[0]], dialect=dialect))[0]
-
-    nrows = len(lines) - 1
-    ncols = len(varieties)
-
-    data = _np.full((nrows, ncols), -1, _np.int8)
-
-    if print_progress:
-        print(f"Reading {nrows} patterns for {ncols} varieties")
-        progress = _progress_bar
-    else:
-        progress = _no_progress_bar
-
-    values = {"0": "0",
-              "1": "1",
-              "2": "2",
-              0: "0",
-              1: "1",
-              2: "2",
-              "AB": "1",
-              "A": "0",
-              "B": "2"}
-
-    npatterns = 0
-
-    row = _np.zeros(ncols)
-
-    for i in progress(range(1, nrows), unit="patterns", delay=1):
-        parts = list(csv.reader([lines[i]], dialect=dialect))[0]
-
-        if len(parts) != ncols:
-            print("WARNING - invalid row! "
-                  f"'{parts}' : {len(parts)} vs {ncols}")
-        else:
-            for j in range(0, ncols):
-                row[j] = values.get(parts[j], -1)
-            copy_into_row(row, data, npatterns)
-
-            npatterns += 1
-
-    if print_progress:
-        print(f"Successfully read {npatterns} patterns.")
-
-    mafs = calculate_mafs(data, min_call_rate=min_call_rate,
-                          min_maf=min_maf, print_progress=print_progress)
-
-    idxs = _np.argsort(mafs, kind="mergesort")[::-1]
-
-    order = sort_patterns(data, idxs, max_markers=max_markers,
-                          print_progress=print_progress)
-
-    for idx in idxs:
-        print(mafs[idx])
-
-    print("DONE!")
 
     df = pd.read_csv(input_file, index_col="code")
 
@@ -639,10 +775,8 @@ if __name__ == "__main__":
         print("USAGE: python select_minimal_markers.py genotypes.csv")
         sys.exit(0)
 
-    (patterns, varieties) = load_patterns(input_file,
-                                          # min_call_rate,
-                                          # min_maf,
-                                          print_progress=True)
+    (patterns, varieties) = orig_load_patterns(input_file,
+                                               print_progress=True)
 
     print(f"{len(patterns)} distinct SNP patterns selected for "
           "constructing the optimal dataset")
@@ -650,8 +784,14 @@ if __name__ == "__main__":
     (patterns, pattern_ids) = sort_and_filter_patterns(patterns,
                                                        print_progress=True)
 
-    (best_patterns, matrix) = find_best_patterns(patterns,
-                                                 pattern_ids,
+    data = load_patterns(input_file,
+                         # min_call_rate,
+                         # min_maf,
+                         # max_mafs,
+                         print_progress=True)
+
+    (best_patterns, matrix) = find_best_patterns(data.patterns,
+                                                 data.ids,
                                                  print_progress=True)
 
     # print(f"\nProcessing complete! Writing output")

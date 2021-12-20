@@ -306,24 +306,27 @@ def load_patterns(input_file: str,
                                        print_progress=print_progress)
 
     sorted_ids = []
+    sorted_mafs = []
 
     for idx in order:
         sorted_ids.append(ids[idx])
+        sorted_mafs.append(mafs[idx] / ncols)
 
     if print_progress:
         print(f"\nLoaded marker data for {patterns.shape[0]} "
               "distinct patterns\n")
 
     class Patterns:
-        def __init__(self, patterns, ids, varieties):
+        def __init__(self, patterns, ids, varieties, mafs):
             self.patterns = patterns
             self.ids = ids
             self.varieties = varieties
+            self.mafs = mafs
 
     assert(len(sorted_ids) == patterns.shape[0])
     assert(len(varieties) == patterns.shape[1])
 
-    return Patterns(patterns, sorted_ids, varieties)
+    return Patterns(patterns, sorted_ids, varieties, sorted_mafs)
 
 
 def orig_load_patterns(input_file: str,
@@ -477,6 +480,9 @@ def sort_and_filter_patterns(patterns,
 
     scores = list(order_by_maf.keys())
     scores.sort()
+
+    # need to go from largest to smallest
+    scores = scores[::-1]
 
     selected = []
 
@@ -789,6 +795,14 @@ if __name__ == "__main__":
                          # min_maf,
                          # max_mafs,
                          print_progress=True)
+
+    for i in range(0, len(pattern_ids)):
+        p = pattern_ids[i]
+        q = data.ids[i]
+
+        j = data.ids.index(p)
+
+        print(f"{p} : {q} : {i} : {j} : {data.mafs[i]:.4f} : {data.mafs[j]:.4f}")
 
     (best_patterns, matrix) = find_best_patterns(data.patterns,
                                                  data.ids,

@@ -317,7 +317,14 @@ def load_patterns(input_file: str,
 
     import csv
 
-    lines = open(input_file, "r").readlines()
+    raw = open(input_file, "r").readlines()
+
+    lines = []
+
+    for line in raw:
+        lines.append(line.lower())
+
+    raw = None
 
     dialect = csv.Sniffer().sniff(lines[0], delimiters=[" ", ",", "\t"])
 
@@ -340,19 +347,7 @@ def load_patterns(input_file: str,
     else:
         progress = _no_progress_bar
 
-    values = {"0": "0",
-              "1": "1",
-              "2": "2",
-              0: "0",
-              1: "1",
-              2: "2",
-              "AB": "1",
-              "A": "0",
-              "B": "2"}
-
     npatterns = 0
-
-    row = _np.zeros(ncols)
 
     for i in progress(range(1, nrows+1), unit="patterns", delay=1):
         parts = list(csv.reader([lines[i]], dialect=dialect))[0]
@@ -364,9 +359,24 @@ def load_patterns(input_file: str,
             ids.append(parts[0])
 
             for j in range(0, ncols):
-                row[j] = values.get(parts[j+1], -1)
+                x: str = parts[j+1]
 
-            _copy_into_row(row, data, npatterns)
+                if x == "0" or x == "a":
+                    data[npatterns, j] = 0
+                elif x == "1" or x == "ab":
+                    data[npatterns, j] = 1
+                elif x == "2" or x == "b":
+                    data[npatterns, j] = 2
+                else:
+                    # get rid of any confusing extra spaces
+                    x = x.lstrip().rstrip()
+
+                    if x == "0" or x == "a":
+                        data[npatterns, j] = 0
+                    elif x == "1" or x == "ab":
+                        data[npatterns, j] = 1
+                    elif x == "2" or x == "b":
+                        data[npatterns, j] = 2
 
             npatterns += 1
 
@@ -434,7 +444,7 @@ def load_patterns(input_file: str,
 
 
 @_numba.jit(nopython=True, nogil=True, fastmath=True,
-            parallel=False, cache=True)
+            parallel=True, cache=True)
 def _calculate_best_possible_score(patterns, thread_matrix,
                                    start: int, end: int):
     """Calculate the best possible score that could be achieved

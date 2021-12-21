@@ -66,6 +66,10 @@ class Patterns:
         self.mafs = mafs
         self.duplicates = duplicates
 
+    def get_pattern_as_string(self, i):
+        """Return the ith pattern as a string"""
+        return _get_pattern_from_array(self.patterns[i])
+
 
 def _get_pattern_from_array(array) -> str:
     """Return a pattern encoded as an integer array
@@ -317,15 +321,7 @@ def load_patterns(input_file: str,
 
     import csv
 
-    raw = open(input_file, "r").readlines()
-
-    lines = []
-
-    for line in raw:
-        lines.append(line.lower())
-
-    raw = None
-
+    lines = open(input_file, "r").readlines()
     dialect = csv.Sniffer().sniff(lines[0], delimiters=[" ", ",", "\t"])
 
     # the varieties are the column headers (minus the first column
@@ -361,9 +357,9 @@ def load_patterns(input_file: str,
             ids.append(parts[0])
             row = _np.asarray(parts[1:], _np.string_)
             pattern = data[npatterns]
-            pattern[(row == b'0') | (row == b'a')] = 0
-            pattern[(row == b'1') | (row == b'ab')] = 1
-            pattern[(row == b'2') | (row == b'b')] = 2
+            pattern[(row == b'0') | (row == b'A')] = 0
+            pattern[(row == b'1') | (row == b'AB')] = 1
+            pattern[(row == b'2') | (row == b'B')] = 2
 
             npatterns += 1
 
@@ -638,8 +634,7 @@ def find_best_patterns(patterns: Patterns,
        when the current_score value is zero - i.e. adding
        another row doesn't add anything to the overall matrix score.
 
-       This return the sorted list of best patterns, plus the
-       matrix showing what is being distinguished
+       This return the sorted list of best patterns
     """
 
     # create the scoring matrix
@@ -696,6 +691,7 @@ def find_best_patterns(patterns: Patterns,
                 print(f"{iteration}\t{cumulative_score}\t"
                       f"{100.0*proportion_resolved:.4f}%\t"
                       f"{pattern_id}\t{pattern}")
+                print(f"Best score from this iteration is {best_score}.")
 
             if cumulative_score == best_possible_score:
                 break
@@ -708,7 +704,7 @@ def find_best_patterns(patterns: Patterns,
               f"but was only able to resolve {cumulative_score} varieties. "
               "This suggests a bug or error in the program!\n")
 
-    return (best_patterns, matrix)
+    return best_patterns
 
 
 if __name__ == "__main__":
@@ -760,16 +756,14 @@ if __name__ == "__main__":
         best_patterns = []
         matrix = None
     else:
-        (best_patterns, matrix) = find_best_patterns(patterns,
-                                                     print_progress=True)
+        best_patterns = find_best_patterns(patterns, print_progress=True)
 
-    # print(f"\nProcessing complete! Writing output")
+    print(f"\nProcessing complete! Writing output")
 
-    # for idx in best_patterns:
-    #    pattern = "\t".join(_get_pattern_from_array(patterns[idx]))
-    #    pattern_id = pattern_ids[idx]
-    #
-    #    print(f"{pattern_id}\t{pattern}")
+    for idx in best_patterns:
+        pid = patterns.ids[idx]
+        pattern = patterns.get_pattern_as_string(idx)
+        print(f"{100}\t{pid}\t{pattern}")
 
     # Want to write out a nice visualisation that shows how each
     # additional pattern distinguishes more varieties... The data

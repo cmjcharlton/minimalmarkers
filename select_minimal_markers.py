@@ -679,7 +679,7 @@ def find_best_patterns(patterns: Patterns,
         if best_score > 0:
             cumulative_score += best_score
             proportion_resolved = cumulative_score / perfect_score
-            best_patterns.append(best_pattern)
+            best_patterns.append((best_pattern, cumulative_score))
             matrix += _create_matrix(patterns.patterns[best_pattern],
                                      matrix)
 
@@ -760,18 +760,23 @@ if __name__ == "__main__":
 
     print(f"\nProcessing complete! Writing output")
 
-    for idx in best_patterns:
-        pid = patterns.ids[idx]
-        pattern = patterns.get_pattern_as_string(idx)
-        print(f"{100}\t{pid}\t{pattern}")
+    import os
+    base = os.path.splitext(input_file)[0]
 
-    # Want to write out a nice visualisation that shows how each
-    # additional pattern distinguishes more varieties... The data
-    # for this is, I think, a 3D matrix (not what is below)
+    with open(f"{base}_minimal_markers.txt", "w") as FILE:
+        FILE.write("CumulativeResolved\tMarkerID\tGenotypePattern\n")
 
-    # print("ID\t" + "\t".join(varieties))
+        for idx, score in best_patterns:
+            pid = patterns.ids[idx]
+            pattern = patterns.get_pattern_as_string(idx)
+            FILE.write(f"{score}\t{pid}\t{pattern}\n")
 
-    # for i in range(0, len(best_patterns)):
-    #    resolves = "\t".join([str(x) for x in matrix[i, :]])
-    #    pattern_id = pattern_ids[best_patterns[i]]
-    #    print(f"{pattern_id}\t{resolves}")
+    with open(f"{base}_selected_markers_with_headers.txt", "w") as FILE:
+        header = "\t".join(patterns.varieties)
+        FILE.write(f"ID\t{header}\n")
+
+        for idx, _ in best_patterns:
+            FILE.write(f"{patterns.ids[idx]}\t")
+            FILE.write("\t".join([str(x) if x >= 0 else "x"
+                                  for x in patterns.patterns[idx]]))
+            FILE.write("\n")

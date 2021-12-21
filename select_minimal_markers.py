@@ -349,6 +349,8 @@ def load_patterns(input_file: str,
 
     npatterns = 0
 
+    irow = _np.full(ncols, -1, _np.int8)
+
     for i in progress(range(1, nrows+1), unit="patterns", delay=1):
         parts = list(csv.reader([lines[i]], dialect=dialect))[0]
 
@@ -357,26 +359,11 @@ def load_patterns(input_file: str,
                   f"'{parts}' : {len(parts)} vs {ncols}")
         else:
             ids.append(parts[0])
-
-            for j in range(0, ncols):
-                x: str = parts[j+1]
-
-                if x == "0" or x == "a":
-                    data[npatterns, j] = 0
-                elif x == "1" or x == "ab":
-                    data[npatterns, j] = 1
-                elif x == "2" or x == "b":
-                    data[npatterns, j] = 2
-                else:
-                    # get rid of any confusing extra spaces
-                    x = x.lstrip().rstrip()
-
-                    if x == "0" or x == "a":
-                        data[npatterns, j] = 0
-                    elif x == "1" or x == "ab":
-                        data[npatterns, j] = 1
-                    elif x == "2" or x == "b":
-                        data[npatterns, j] = 2
+            row = _np.asarray(parts[1:], _np.string_)
+            pattern = data[npatterns]
+            pattern[(row == b'0') | (row == b'a')] = 0
+            pattern[(row == b'1') | (row == b'ab')] = 1
+            pattern[(row == b'2') | (row == b'b')] = 2
 
             npatterns += 1
 

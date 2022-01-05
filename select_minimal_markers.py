@@ -586,12 +586,12 @@ def _first_score_patterns(patterns, print_progress: bool = True):
 def _chunked_rescore_patterns(patterns, matrix,
                               scores, sorted_idxs,
                               best_score: int,
-                              start, end):
+                              start: int, end: int):
     ncols: int = patterns.shape[1]
 
     nthreads: int = _numba.config.NUMBA_NUM_THREADS
 
-    best_scores = _np.zeros(nthreads)
+    best_scores = _np.zeros(nthreads, _np.int32)
 
     for thread_id in _numba.prange(0, nthreads):
         my_best_score: int = best_score
@@ -624,7 +624,9 @@ def _chunked_rescore_patterns(patterns, matrix,
                                   matrix[i, j] == 0)
 
             scores[p] = score
-            my_best_score = score
+
+            if score > my_best_score:
+                my_best_score = score
 
         best_scores[thread_id] = my_best_score
 
@@ -669,10 +671,10 @@ def _rescore_patterns(patterns, matrix, scores, sorted_idxs,
                       unit="patterns", unit_scale=chunk_size):
         start: int = i * chunk_size
         end: int = min((i+1)*chunk_size, npatterns)
-        best_score = _chunked_rescore_patterns(patterns, matrix,
-                                               scores, sorted_idxs,
-                                               best_score,
-                                               start, end)
+        best_score: int = _chunked_rescore_patterns(patterns, matrix,
+                                                    scores, sorted_idxs,
+                                                    best_score,
+                                                    start, end)
 
     return _np.argsort(scores)[::-1]
 

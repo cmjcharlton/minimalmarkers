@@ -5,3 +5,4 @@ large_output.txt
 .gitignore
 reference_AppleGenotypes_selected_markers_with_headers.txt
 reference_AppleGenotypes_minimal_markers.txt
+fast_large_output_64cores.txt

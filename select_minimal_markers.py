@@ -732,6 +732,24 @@ def _calculate_score(matrix):
     return test_score
 
 
+@_numba.jit(nopython=True, fastmath=True, nogil=True,
+            parallel=False, cache=True)
+def _get_unresolved(matrix):
+    ncols: int = matrix.shape[1]
+
+    unresolved = _np.zeros((ncols, 2), _np.int32)
+    num_unresolved: int = 0
+
+    for i in range(0, ncols):
+        for j in range(i+1, ncols):
+            if matrix[i, j] == 0:
+                unresolved[num_unresolved, 0] = i
+                unresolved[num_unresolved, 1] = j
+                num_unresolved += 1
+
+    return (num_unresolved, unresolved)
+
+
 def find_best_patterns(patterns: Patterns,
                        print_progress: bool = False):
     """This is the main function where we iterate through all of the
@@ -879,6 +897,32 @@ def find_best_patterns(patterns: Patterns,
 
     elif print_progress:
         print("All good!")
+
+        ncomparisons: int = int(len(best_patterns) * ncols * (ncols-1) / 2)
+
+        print(f"\n{ncomparisons} comparisons.")
+
+        (num_unresolved, unresolved) = _get_unresolved(matrix)
+
+        unresolved_varieties = {}
+
+        for idx in range(0, num_unresolved):
+            i: int = unresolved[idx, 0]
+            j: int = unresolved[idx, 1]
+
+            var1 = patterns.varieties[i]
+            var2 = patterns.varieties[j]
+
+            unresolved_varieties[i] = 1
+            unresolved_varieties[j] = 1
+
+            print(f"{var1} not resolved from {var2}")
+
+        if len(unresolved_varieties) == 0:
+            print(f"All {ncols} varieties resolved.")
+        else:
+            print(f"{len(unresolved_varieties)} of {ncols} varieties "
+                  "unresolved.")
 
     return best_patterns
 

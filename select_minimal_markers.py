@@ -525,32 +525,36 @@ def calculate_best_possible_score(patterns: Patterns,
 
 @_numba.jit(nopython=True, nogil=True, fastmath=True,
             parallel=True, cache=True)
-def _chunked_first_score_patterns(patterns, scores, start, end):
+def _chunked_first_score_patterns(patterns, matrix, skip_patterns,
+                                  scores, start, end):
     ncols: int = patterns.shape[1]
 
     for p in _numba.prange(start, end):
-        score: int = 0
+        if not skip_patterns[p]:
+            score: int = 0
 
-        for i in range(0, ncols):
-            ival: int = patterns[p, i]
+            for i in range(0, ncols):
+                ival: int = patterns[p, i]
 
-            if ival != -1:
-                for j in range(i+1, ncols):
-                    jval: int = patterns[p, j]
+                if ival != -1:
+                    for j in range(i+1, ncols):
+                        jval: int = patterns[p, j]
 
-                    if jval != -1 and ival != jval:
-                        score += 1
+                        score += (jval != -1 and ival != jval and
+                                  matrix[i, j] == 0)
 
-        scores[p] = score
+            scores[p] = score
+
+            if score == 0:
+                skip_patterns[p] = 1
 
 
-def _first_score_patterns(patterns, print_progress: bool = True):
-    """Do the work of scoring all of the passed patterns.
-
-       This scores everything assuming no patterns are in use
-       (i.e. it is used for the first, initial score)
-
-       This returns a numpy array of all of the scores
+def _first_score_patterns(patterns, matrix, skip_patterns,
+                          print_progress: bool = True):
+    """Do the work of scoring all of the passed patterns against
+       the current value of the matrix. This returns a tuple
+       of the best score and the index of the pattern with
+       that best score
     """
     npatterns: int = patterns.shape[0]
     scores = _np.zeros(npatterns, _np.int32)
@@ -576,25 +580,29 @@ def _first_score_patterns(patterns, print_progress: bool = True):
                       unit="patterns", unit_scale=chunk_size):
         start: int = i * chunk_size
         end: int = min((i+1)*chunk_size, npatterns)
-        _chunked_first_score_patterns(patterns, scores, start, end)
+        _chunked_first_score_patterns(patterns, matrix, skip_patterns,
+                                      scores, start, end)
 
     return scores
 
 
 @_numba.jit(nopython=True, nogil=True, fastmath=True,
             parallel=True, cache=True)
-def _chunked_rescore_patterns(patterns, matrix,
+def _chunked_rescore_patterns(patterns, matrix, skip_patterns,
                               scores, sorted_idxs,
                               best_score: int,
                               start: int, end: int):
     ncols: int = patterns.shape[1]
 
     nthreads: int = _numba.config.NUMBA_NUM_THREADS
+    nthreads = 1
 
     best_scores = _np.zeros(nthreads, _np.int32)
 
-    for thread_id in _numba.prange(0, nthreads):
+    for thread_id in range(0, nthreads): #_numba.prange(0, nthreads):
         my_best_score: int = best_score
+
+        print(my_best_score, start, end, thread_id)
 
         for chunk in range(start, end, nthreads):
             idx: int = chunk + thread_id
@@ -604,9 +612,12 @@ def _chunked_rescore_patterns(patterns, matrix,
 
             p: int = sorted_idxs[idx]
 
+            if skip_patterns[p]:
+                continue
+
             current_score: int = scores[p]
 
-            if current_score <= my_best_score:
+            if current_score < my_best_score:
                 # there are no more patterns with a better score
                 break
 
@@ -625,7 +636,11 @@ def _chunked_rescore_patterns(patterns, matrix,
 
             scores[p] = score
 
+            if score == 0:
+                skip_patterns[p] = 1
+
             if score > my_best_score:
+                print(score, my_best_score)
                 my_best_score = score
 
         best_scores[thread_id] = my_best_score
@@ -639,7 +654,7 @@ def _chunked_rescore_patterns(patterns, matrix,
     return best_score
 
 
-def _rescore_patterns(patterns, matrix, scores, sorted_idxs,
+def _rescore_patterns(patterns, matrix, skip_patterns, scores, sorted_idxs,
                       print_progress: bool = False):
     """Do the work of scoring all of the passed patterns against
        the current value of the matrix. This returns a tuple
@@ -660,7 +675,7 @@ def _rescore_patterns(patterns, matrix, scores, sorted_idxs,
     while nchunks*chunk_size < npatterns:
         nchunks += 1
 
-    if nchunks < 4:
+    if True: #nchunks < 4:
         nchunks = 1
         chunk_size = npatterns
         progress = _no_progress_bar
@@ -672,11 +687,17 @@ def _rescore_patterns(patterns, matrix, scores, sorted_idxs,
         start: int = i * chunk_size
         end: int = min((i+1)*chunk_size, npatterns)
         best_score: int = _chunked_rescore_patterns(patterns, matrix,
+                                                    skip_patterns,
                                                     scores, sorted_idxs,
                                                     best_score,
                                                     start, end)
 
-    return _np.argsort(scores)[::-1]
+    sorted_idxs = _np.argsort(scores)[::-1]
+
+    for i in range(0, 5):
+        print(f"{sorted_idxs[i]} : {scores[sorted_idxs[i]]}")
+
+    return sorted_idxs
 
 
 @_numba.jit(nopython=True, nogil=True, fastmath=True,
@@ -815,7 +836,11 @@ def find_best_patterns(patterns: Patterns,
         print("\nIteration\tCumulativeResolved\tProportion\tMarkerID\tPattern")
 
     # now find the intrinsic scores of all of the patterns
-    scores = _first_score_patterns(patterns.patterns)
+    matrix = _np.zeros((ncols, ncols), _np.int8)
+    skip_patterns = _np.zeros(len(patterns.patterns), _np.int8)
+
+    scores = _first_score_patterns(patterns.patterns, matrix,
+                                   skip_patterns, print_progress)
 
     # get the sorted list of these scores - this is an array of indicies
     # into the scores / patterns lists
@@ -824,18 +849,17 @@ def find_best_patterns(patterns: Patterns,
     # the first pattern is the best one
     iteration: int = 1
     best_pattern = sorted_idxs[0]
-    best_patterns = [best_pattern]
     best_score: int = scores[best_pattern]
+    best_patterns = [(best_pattern, best_score)]
     cumulative_score: int = best_score
     current_score: int = best_score
     proportion_resolved = cumulative_score / perfect_score
 
     # patterns which have been used are given a score of zero
     scores[best_pattern] = 0
-    sorted_idxs = _np.roll(sorted_idxs, -1)
+    skip_patterns[best_pattern] = 1
 
     # create the matrix showing which varieties can be distinguished
-    matrix = _np.zeros((ncols, ncols), _np.int8)
     matrix = _create_matrix(patterns.patterns[best_pattern], matrix)
 
     if print_progress:
@@ -850,14 +874,12 @@ def find_best_patterns(patterns: Patterns,
     # we know that scores can only go down, so iterate through the remaining
     # patterns in descending score order, updating their score based on
     # the current matrix,
-
-    best_patterns = []
-
     while current_score > 0:
         iteration += 1
 
         sorted_idxs = _rescore_patterns(patterns.patterns, matrix,
-                                        scores, sorted_idxs, print_progress)
+                                        skip_patterns, scores, sorted_idxs,
+                                        print_progress)
 
         best_pattern = sorted_idxs[0]
         best_score = scores[best_pattern]
@@ -866,8 +888,10 @@ def find_best_patterns(patterns: Patterns,
             cumulative_score += best_score
             proportion_resolved = cumulative_score / perfect_score
             best_patterns.append((best_pattern, cumulative_score))
+
             scores[best_pattern] = 0
-            sorted_idxs = _np.roll(sorted_idxs, -1)
+            skip_patterns[best_pattern] = 1
+
             matrix += _create_matrix(patterns.patterns[best_pattern],
                                      matrix)
 
@@ -896,13 +920,21 @@ def find_best_patterns(patterns: Patterns,
     # the correct number of varieties
     matrix = _np.zeros((ncols, ncols), _np.int8)
 
+    last_score: int = 0
+
     for (pattern, score) in best_patterns:
         matrix += _create_matrix(patterns.patterns[pattern], matrix)
 
-    test_score: int = 0
-    for i in range(0, ncols):
-        for j in range(i+1, ncols):
-            test_score += matrix[i, j]
+        test_score: int = 0
+        for i in range(0, ncols):
+            for j in range(i+1, ncols):
+                test_score += matrix[i, j]
+
+        if test_score - last_score != score:
+            print(f"WARNING: {patterns.ids[pattern]} "
+                  f"{test_score-last_score} vs {score}")
+
+        print(f"{patterns.ids[pattern]} {test_score}")
 
     if test_score != best_possible_score:
         print("\n\nWARNING: The patterns selected by the algorithm do not "

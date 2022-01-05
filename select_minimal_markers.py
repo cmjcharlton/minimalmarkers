@@ -456,7 +456,7 @@ def _calculate_best_possible_score(patterns, thread_matrix,
     score: int = 0
 
     for i in range(0, ncols):
-        for j in range(0, ncols):
+        for j in range(i+1, ncols):
             for t in range(0, nthreads):
                 if thread_matrix[t, i, j] != 0:
                     score += 1

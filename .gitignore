@@ -1,3 +1,7 @@
 AppleGenotypes_minimal_markers.txt
 AppleGenotypes_selected_markers_with_headers.txt
 __pycache__
+large_output.txt
+.gitignore
+reference_AppleGenotypes_selected_markers_with_headers.txt
+reference_AppleGenotypes_minimal_markers.txt

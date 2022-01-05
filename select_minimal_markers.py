@@ -892,6 +892,25 @@ def find_best_patterns(patterns: Patterns,
               f"but was only able to resolve {cumulative_score} varieties. "
               "This suggests a bug or error in the program!\n")
 
+    # validate that the selected best patterns do indeed distinguish
+    # the correct number of varieties
+    matrix = _np.zeros((ncols, ncols), _np.int8)
+
+    for (pattern, score) in best_patterns:
+        matrix += _create_matrix(patterns.patterns[pattern], matrix)
+
+    test_score: int = 0
+    for i in range(0, ncols):
+        for j in range(i+1, ncols):
+            test_score += matrix[i, j]
+
+    if test_score != best_possible_score:
+        print("\n\nWARNING: The patterns selected by the algorithm do not "
+              f"give a total score ({test_score}) that is equal to the "
+              "best possible score that should have been attainable "
+              f"({best_possible_score}). This suggests a bug or error "
+              "in the program!\n")
+
     return best_patterns
 
 

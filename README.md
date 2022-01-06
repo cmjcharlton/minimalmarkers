@@ -20,14 +20,14 @@ Optional (to display progress bars)
 ## Usage
 
 ```
-python select_minimal_markers.py <input_file>
+python minimalmarkers.py <input_file>
 ```
 
 where `<input_file>` is an input file in genotypes format. If your input
 file is in VCF format then use
 
 ```
-python select_minimal_markers.py --vcf <input_file>
+python minimalmarkers.py --vcf <input_file>
 ```
 
 ## Example
@@ -36,7 +36,7 @@ The sample SeqSNP data for Cider apples is included as a test dataset
 in the `example` directory. To run this, type;
 
 ```
-python select_minimal_markers.py example/AppleGenotypes.csv
+python minimalmarkers.py example/AppleGenotypes.csv
 ```
 
 The script will first pick the marker which discriminates the maximum
@@ -70,7 +70,7 @@ our paper: https://doi.org/10.1371/journal.pone.0242940
 
 ## Testing and validation
 
-The `select_minimal_markers.py` script contains several runtime validation
+The `minimalmarkers.py` script contains several runtime validation
 and sanity tests that check that it works correctly every time
 that it runs. The most important validation is that, after finding the
 set of minimal markers, it rebuilds the selection matrix from scratch using
@@ -86,7 +86,7 @@ You can run an integration test to validate installation by typing;
 pytest .
 ```
 
-(or you can type `python test_minimal_markers.py` if you don't have
+(or you can type `python test_minimalmarkers.py` if you don't have
 `pytest` installed)
 
 ## Genotypes file format
@@ -107,8 +107,47 @@ to reduce the input set to a maximum number of markers. More help
 on these can be found by typing;
 
 ```
-python select_minimal_markers.py --help
+python minimalmarkers.py --help
 ```
+
+## Use as a library / module
+
+The functions in this script have been written to be usable as a
+module. To import the module, use;
+
+```python
+import minimalmarkers
+```
+
+in your python script (assuming `minimalmarkers.py` is in your current
+directory or in your `PYTHONPATH`).
+
+The module provides the following functions:
+
+* `load_patterns` : Load a collection of markers / patterns from
+   an input file (genotypes file format). This will return
+   the patterns as a `Patterns` object.
+* `calculate_best_possible_score` : Calculate the best possible score
+   from the markers within a `Patterns` object.
+* `find_best_patterns` : Find the minimal set of best markers from
+   the passed `Patterns` object that would give the best possible score.
+* `convert_vcf_to_genotypes` : Convert an input file in VCF format into
+   Genotypes format.
+
+## Environment variables
+
+Set the environment variable `NO_PROGRESS` equal to `1` if you want to
+disable the progress bars that are used by the program to show progress
+during the calculation. Note that progress bars are only shown if
+output is written to the console (i.e. if `print_progress` is `True`
+when calling the functions directly, or if the `--silent` command line
+option is not used).
+
+Set the environment variable `NO_NUMBA` equal to `1` if you want
+to run the calculation with numba disabled. This should only really
+be used for profiling, to demonstrate how much of a speed up numba
+brings to this script. In our experience, numba speeds up this
+script by hundreds, if not thousands of times!
 
 ## History
 
@@ -119,4 +158,4 @@ associated with the paper are included in the `original` directory.
 These include the original `convert_vcf_to_genotypes.pl` and
 `check_results.pl` scripts that convert VCF files and check the output
 of the code. The functionality of these scripts have been merged into
-`select_minimal_markers.py`.
+`minimalmarkers.py`.

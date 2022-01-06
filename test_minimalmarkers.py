@@ -1,7 +1,7 @@
 
 
-from select_minimal_markers import load_patterns, find_best_patterns, \
-                                   calculate_best_possible_score, Patterns
+from minimalmarkers import load_patterns, find_best_patterns, \
+                           calculate_best_possible_score, Patterns
 
 
 def test_minimal_markers():

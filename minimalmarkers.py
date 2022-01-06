@@ -1106,6 +1106,9 @@ if __name__ == "__main__":
                              "and will run the program against the "
                              "converted file.")
 
+    parser.add_argument("--silent", action="store_true",
+                        help="Silence all output written to the console.")
+
     args = parser.parse_args()
 
     input_file = args.input_file[0]
@@ -1117,11 +1120,16 @@ if __name__ == "__main__":
             import sys
             sys.exit(-1)
 
+    if args.silent:
+        print_progress = False
+    else:
+        print_progress = True
+
     patterns = load_patterns(input_file,
                              min_call_rate=args.min_call_rate,
                              min_maf=args.min_maf,
                              max_markers=args.max_markers,
-                             print_progress=True)
+                             print_progress=print_progress)
 
     if patterns is None:
         best_patterns = []
@@ -1129,9 +1137,11 @@ if __name__ == "__main__":
         import sys
         sys.exit(-1)
     else:
-        best_patterns = find_best_patterns(patterns, print_progress=True)
+        best_patterns = find_best_patterns(patterns,
+                                           print_progress=print_progress)
 
-    print(f"\nProcessing complete! Writing output")
+    if print_progress:
+        print(f"\nProcessing complete! Writing output")
 
     import os
     base = os.path.splitext(input_file)[0]

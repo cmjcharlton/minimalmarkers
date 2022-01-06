@@ -1,12 +1,17 @@
 # minimalmarkers
 
-Code for choosing the minimum set of genetic markers needed to differentiate all samples in a genotyping dataset
+Code for choosing the minimum set of genetic markers needed to differentiate
+all samples in a genotyping dataset
 
 ## Requirements
 
-* Python >= 3.7
+* Python >= 3.6
 * numpy >= 1.20.0
 * numba >= 0.50.0
+
+Note that this script will still run if numba is not available. However, it
+will be significantly (hundreds of times) slower and will not be able
+to run in parallel.
 
 Optional (to display progress bars)
 

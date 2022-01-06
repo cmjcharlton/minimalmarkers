@@ -1,23 +1,59 @@
 
+import os as _os
+
 try:
-    from dataclasses import dataclass
-    from typing import List, Dict
-except ImportError:
-    print("This script requires newer features of Python, as provided "
+    from dataclasses import dataclass as _dataclass
+    from typing import List as _List
+    from typing import Dict as _Dict
+    from typing import Tuple as _Tuple
+except Exception:
+    raise ImportError(
+          "This script requires newer features of Python, as provided "
           "by the dataclasses and typing modules. Please upgrade to "
           "at least Python 3.6 and try again.")
 
+
 try:
+    if "NO_NUMBA" in _os.environ and _os.environ["NO_NUMBA"] == "1":
+        # used for debugging - disable numba
+        raise ImportError("Disabling numba")
+
     import numba as _numba
-except ImportError:
-    print("This script requires numba to accelerate key parts. "
-          "Please install numba (e.g. via 'conda install numba' "
-          "or 'pip install numba' and try again.")
+    _MIN_CHUNK_SIZE = 1000
+except Exception:
+    print("WARNING: numba is not available. This is used to accelerate "
+          "this script. We really recommend installing numba, "
+          "e.g. via `pip install numba` or `conda install numba` "
+          "as this will make this script run significantly (hundreds "
+          "of times!) faster.")
+
+    _MIN_CHUNK_SIZE = 10
+
+    # This is a fake numba module which will enable the numba'd code
+    # to run without requiring the module. Note that it won't be
+    # compiled, so will run really slowly!
+    class _numba:
+        @staticmethod
+        def jit(**kwargs):
+            def wrapped(func):
+                return func
+
+            return wrapped
+
+        @staticmethod
+        def prange(*args, **kwargs):
+            return range(*args, **kwargs)
+
+        class CONFIG:
+            NUMBA_NUM_THREADS = 1
+
+        config = CONFIG()
 
 try:
     import numpy as _np
-except ImportError:
-    print("This script requires numpy to accelerate key parts. "
+except Exception:
+    raise ImportError(
+          "This script requires numpy to accelerate key parts. "
           "Please install numpy (e.g. via 'conda install numpy' or "
           "'pip install numpy' and try again.")
 
@@ -27,12 +63,17 @@ def _no_progress_bar(x, **kwargs):
 
 
 try:
+    if "NO_PROGRESS" in _os.environ and _os.environ["NO_PROGRESS"] == "1":
+        # Option to completely disable progress bars (some people
+        # really dislike them)
+        raise ImportError("Disabling progress bars")
+
     from tqdm import tqdm as _progress_bar
 except Exception:
     _progress_bar = _no_progress_bar
 
 
-@dataclass
+@_dataclass
 class Patterns:
     """This class holds all of the data relating to the patterns
        that distinguish between varieties that will be searched
@@ -43,21 +84,21 @@ class Patterns:
 
     """The IDs of the patterns, in the same order as the rows in
        the numpy 2D array"""
-    ids: List[str] = None
+    ids: _List[str] = None
 
     """The varieties to be distinguised, in the same order as the
        columns in the numpy 2D array"""
-    varieties: List[str] = None
+    varieties: _List[str] = None
 
     """The minor allele frequency for each pattern, in the same order
        as the rows in the numpy 2D array. Note that this array should
        be sorted in order of decreasing MAF"""
-    mafs: List[float] = None
+    mafs: _List[float] = None
 
     """If there are any duplicate patterns, then this dictionary
        contains the ID of the canonical pattern as the key,
        with the value being the IDs of all of the other duplicates"""
-    duplicates: Dict[str, List[str]] = None
+    duplicates: _Dict[str, _List[str]] = None
 
     def __init__(self, patterns, ids, varieties, mafs, duplicates):
         self.patterns = patterns
@@ -95,11 +136,16 @@ def _get_pattern_from_array(array) -> str:
     return "".join(pattern)
 
 
-def convert_vcf_to_genotypes(input_file):
+def convert_vcf_to_genotypes(input_file: str) -> str:
     """Convert the passed input file in VCF format into the genotypes
        format required by this program. This will write the output
        file into a new file called '{input_file}.genotypes', and will
        return that filename
+
+       input_file: str  The full path to the input file to convert
+
+       returns:
+            The full path to the converted file
     """
     import re
 
@@ -371,7 +417,7 @@ def load_patterns(input_file: str,
                   min_call_rate: float = 0.9,
                   min_maf: float = 0.001,
                   max_markers: int = 1000000000000,
-                  print_progress: bool = False):
+                  print_progress: bool = False) -> Patterns:
     """Load all of the patterns from the passed file.
        The patterns will be converted to the correct format,
        including cleaning / conversion of A, B, AB converted
@@ -548,7 +594,7 @@ def _calculate_best_possible_score(patterns, thread_matrix,
 
 
 def calculate_best_possible_score(patterns: Patterns,
-                                  print_progress: bool = False):
+                                  print_progress: bool = False) -> int:
     """Calculate the best possible score for the passed Patterns
        object.
 
@@ -557,7 +603,7 @@ def calculate_best_possible_score(patterns: Patterns,
        print_progress: Whether or not to print any progress status
                        to output
 
-       This returns the best possible score (float)
+       This returns the best possible score
     """
 
     if type(patterns) != Patterns:
@@ -570,7 +616,7 @@ def calculate_best_possible_score(patterns: Patterns,
     perfect_score: int = int((ncols * (ncols-1)) / 2)
 
     if print_progress:
-        chunk_size = min(1000, npatterns)
+        chunk_size = min(_MIN_CHUNK_SIZE, npatterns)
         progress = _progress_bar
     else:
         chunk_size = npatterns
@@ -594,8 +640,8 @@ def calculate_best_possible_score(patterns: Patterns,
                       unit="patterns", unit_scale=chunk_size):
         start: int = i * chunk_size
         end: int = min((i+1)*chunk_size, npatterns)
-        score = _calculate_best_possible_score(patterns, thread_matrix,
-                                               start, end)
+        score: int = _calculate_best_possible_score(patterns, thread_matrix,
+                                                    start, end)
 
         if score == perfect_score:
             if print_progress:
@@ -640,7 +686,7 @@ def _first_score_patterns(patterns, skip_patterns,
     scores = _np.zeros(npatterns, _np.int32)
 
     if print_progress:
-        chunk_size = min(1000, npatterns)
+        chunk_size = min(_MIN_CHUNK_SIZE, npatterns)
         progress = _progress_bar
     else:
         chunk_size = npatterns
@@ -740,7 +786,7 @@ def _rescore_patterns(patterns, matrix, skip_patterns, scores, sorted_idxs,
     npatterns: int = patterns.shape[0]
 
     if print_progress:
-        chunk_size = min(1000, npatterns)
+        chunk_size = min(_MIN_CHUNK_SIZE, npatterns)
         progress = _progress_bar
     else:
         chunk_size = npatterns
@@ -833,14 +879,22 @@ def _get_unresolved(matrix):
 
 
 def find_best_patterns(patterns: Patterns,
-                       print_progress: bool = False):
+                       print_progress: bool = False) -> _List[_Tuple[int,
+                                                                     int]]:
     """This is the main function where we iterate through all of the
        available rows of SNP data and find the one that adds the most
        new "1s" to the overall scoring matrix. This function will return
        when the current_score value is zero - i.e. adding
        another row doesn't add anything to the overall matrix score.
 
-       This return the sorted list of best patterns
+       This returns the best patterns with their associated score,
+       as a list of tuples, e.g.
+
+       [ (index of best pattern, score of best pattern),
+         (index of second best pattern, score of second best pattern),
+         ...
+         (index of last pattern, score of last pattern)
+       ]
     """
 
     # create the scoring matrix

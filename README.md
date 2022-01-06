@@ -94,6 +94,17 @@ Note that you can read in data in VCF format by using the `--vcf` command
 line option. This may not work for all VCFs, so please check any warnings
 that are printed and report any bugs.
 
+## Command line options
+
+There are additional command line options that can be used to filter
+out markers based on minor allele frequency, minimum call rate, or
+to reduce the input set to a maximum number of markers. More help
+on these can be found by typing;
+
+```
+python select_minimal_markers.py --help
+```
+
 ## History
 
 This script is a rewrite of the original `select_minimal_markers.pl` Perl

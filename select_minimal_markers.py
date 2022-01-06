@@ -95,12 +95,94 @@ def _get_pattern_from_array(array) -> str:
     return "".join(pattern)
 
 
-@_numba.jit(nopython=True, nogil=True, fastmath=True, cache=True)
-def _copy_into_row(row, data, i):
-    ncols: int = len(row)
+def convert_vcf_to_genotypes(input_file):
+    """Convert the passed input file in VCF format into the genotypes
+       format required by this program. This will write the output
+       file into a new file called '{input_file}.genotypes', and will
+       return that filename
+    """
+    import re
 
-    for j in range(0, ncols):
-        data[i, j] = row[j]
+    lines = open(input_file, "r").readlines()
+
+    i = 0
+
+    for line in lines:
+        line = line.strip()
+
+        if line.startswith("#CHR"):
+            # we have found the CHROM line
+            break
+
+        i += 1
+
+    if not line.startswith("#CHR"):
+        print(f"WARNING: This does not look like a valid VCF file!")
+        return None
+
+    parts = line.split("\t")
+
+    if len(parts) < 10:
+        print(f"WARNING: Corruption on line {i+1} of the VCF file!")
+        return None
+
+    head = "\t".join(parts[9:])
+
+    output_file = f"{input_file}.genotypes"
+
+    FILE = open(output_file, "w")
+
+    FILE.write(f"Marker\t{head}\n")
+
+    i += 1
+
+    while i < len(lines):
+        line = lines[i].strip()
+
+        parts = line.split("\t")
+
+        if len(parts) < 10:
+            print(f"WARNING: Corruption on line {i+1} of the VCF file!")
+            FILE.close()
+            os.unlink(output_file)
+            return None
+
+        chr = parts[0]
+        pos = parts[1]
+        data = parts[9:]
+
+        FILE.write(f"{chr}_{pos}")
+
+        for cell in data:
+            field = cell.split(":")[0]
+
+            m = re.search(r"^(\d)[\/\|](\d)", field)
+
+            if m:
+                a = int(m.groups()[0])
+                b = int(m.groups()[1])
+
+                if a == 0 and b == 1:
+                    FILE.write("\t1")
+                elif a == 0 and b == 0:
+                    FILE.write("\t0")
+                elif a == 1 and b == 1:
+                    FILE.write("\t2")
+                else:
+                    print(f"WARNING: Unrecognised pattern {field} on "
+                          f"line {i+1}.")
+                    FILE.write("\t-1")
+            else:
+                print(f"WARNING: Unrecognised pattern {field} on "
+                      f"line {i+1}. Expecting 0/1, 1|1, 0/0 or equivalent.")
+                FILE.write("\t-1")
+
+        FILE.write("\n")
+        i += 1
+
+    FILE.close()
+
+    return output_file
 
 
 @_numba.jit(nopython=True, nogil=True, fastmath=True,
@@ -962,9 +1044,24 @@ if __name__ == "__main__":
                              "will be discarded before processing. Default "
                              f"value is 1000000000000.")
 
+    parser.add_argument("--vcf", action="store_true",
+                        help="Read the input file in VCF format. Note that "
+                             "this will first convert the file into "
+                             "the internal format, save that to disk "
+                             "using the filename '{input_file}.genotypes' "
+                             "and will run the program against the "
+                             "converted file.")
+
     args = parser.parse_args()
 
     input_file = args.input_file[0]
+
+    if args.vcf:
+        input_file = convert_vcf_to_genotypes(input_file)
+
+        if input_file is None:
+            import sys
+            sys.exit(-1)
 
     patterns = load_patterns(input_file,
                              min_call_rate=args.min_call_rate,
@@ -975,6 +1072,8 @@ if __name__ == "__main__":
     if patterns is None:
         best_patterns = []
         matrix = None
+        import sys
+        sys.exit(-1)
     else:
         best_patterns = find_best_patterns(patterns, print_progress=True)
 

@@ -19,6 +19,14 @@ Optional (to display progress bars)
 
 * tqdm >= 4.60.0
 
+You can install the requirements individually, or by making use
+of the [requirements.txt](requirements.txt) supplied with this repository.
+To do this, type
+
+```
+pip install -r requirements.txt
+```
+
 ## Usage
 
 ```

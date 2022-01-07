@@ -16,7 +16,9 @@ jobs:
       max-parallel: 4
       fail-fast: false
       matrix:
-        python-version: ["3.6", "3.7", "3.8", "3.9", "3.10"]
+        # Python 3.10 isn't yet supported because numba won't install
+        # on the CI platform...
+        python-version: ["3.6", "3.7", "3.8", "3.9"]
         config:
           - {
               name: "Windows Latest MSVC",

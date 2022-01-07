@@ -1,5 +1,7 @@
 # minimalmarkers
 
+[![Build status](https://github.com/chryswoods/minimalmarkers/workflows/CI/badge.svg)](https://github.com/chryswoods/minimalmarkers/actions?query=workflow%3ACI)
+
 Code for choosing the minimum set of genetic markers needed to differentiate
 all samples in a genotyping dataset
 

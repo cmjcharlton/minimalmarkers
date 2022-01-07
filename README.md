@@ -6,7 +6,7 @@ all samples in a genotyping dataset
 ## Requirements
 
 * Python >= 3.6
-* numpy >= 1.20.0
+* numpy >= 1.19.0
 * numba >= 0.50.0
 
 Note that this script will still run if numba is not available. However, it

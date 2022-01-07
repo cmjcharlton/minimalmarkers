@@ -131,6 +131,9 @@ The module provides the following functions:
    from the markers within a `Patterns` object.
 * `find_best_patterns` : Find the minimal set of best markers from
    the passed `Patterns` object that would give the best possible score.
+* `get_unresolved` : Return the names of the varieties that cannot be
+   resolved based on the set of best patterns returned by
+   `find_best_patterns`.
 * `convert_vcf_to_genotypes` : Convert an input file in VCF format into
    Genotypes format.
 

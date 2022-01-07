@@ -10,7 +10,9 @@ except Exception:
     raise ImportError(
           "This script requires newer features of Python, as provided "
           "by the dataclasses and typing modules. Please upgrade to "
-          "at least Python 3.6 and try again.")
+          "at least Python 3.6 and try again. If you are using "
+          "Python 3.6 then make sure that the 'dataclasses' module "
+          "has been installed.")
 
 
 try:
@@ -876,6 +878,63 @@ def _get_unresolved(matrix):
                 num_unresolved += 1
 
     return (num_unresolved, unresolved)
+
+
+def get_unresolved(patterns: Patterns,
+                   best_patterns: _List[_Tuple[int, int]],
+                   print_progress: bool = False):
+    """Return the IDs of any of the varieties that are
+       not resolved by the set of best patterns output
+       by the 'find_best_patterns' function.
+
+       patterns: Patterns
+           The input data to process
+
+       best_patterns: List[Tuple[int, int]]
+           The collection of best patterns output from the
+           find_best_patterns function
+
+       returns: List[Tuple[str, str]]
+           The lists of pairs of varieties that cannot be
+           distinguished from one another. The names
+           of the varieties are returned
+    """
+    ncols: int = len(patterns.varieties)
+
+    # first, build the matrix of what is resolved
+    matrix = _np.zeros((ncols, ncols), _np.int8)
+
+    if print_progress:
+        print("Identifying unresolved varieties...")
+        progress = _progress_bar
+    else:
+        progress = _no_progress_bar
+
+    for i in progress(range(0, len(best_patterns)), delay=1,
+                      unit="patterns"):
+        (pattern, score) = best_patterns[i]
+        matrix += _create_matrix(patterns.patterns[pattern], matrix)
+
+    # now find the number and ID of unresolved varieties from this matrix
+    (num_unresolved, unresolved) = _get_unresolved(matrix)
+
+    unresolved_varieties = {}
+
+    result = []
+
+    for idx in range(0, num_unresolved):
+        i: int = unresolved[idx, 0]
+        j: int = unresolved[idx, 1]
+
+        var1 = patterns.varieties[i]
+        var2 = patterns.varieties[j]
+
+        unresolved_varieties[i] = 1
+        unresolved_varieties[j] = 1
+
+        result.append((var1, var2))
+
+    return result
 
 
 def find_best_patterns(patterns: Patterns,

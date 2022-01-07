@@ -1,7 +1,8 @@
 
 
 from minimalmarkers import load_patterns, find_best_patterns, \
-                           calculate_best_possible_score, Patterns
+                           calculate_best_possible_score, \
+                           get_unresolved, Patterns
 
 
 def test_minimal_markers():
@@ -60,14 +61,20 @@ def test_minimal_markers():
 
     # This last test is a bit fragile - it is possible that a slightly
     # different ordering can lead to a different number of patterns
-    # found
-    assert(len(best_patterns) == len(correct_result))
+    # found - the algorithm is inherently non-reproducible for the
+    # later patterns that are found. This doesn't matter as long as
+    # the patterns that have been selected give the same score as
+    # the theoretical maximum possible
+    if len(best_patterns) == len(correct_result):
+        for i in range(0, len(best_patterns)):
+            assert best_patterns[i][1] == correct_result[i][1]
 
-    # Again, this is a fragile test as different ordering or different
-    # selection of a duplicate could lead to a different final result.
-    # We would hope that the scores are equal, however...
-    for i in range(0, len(best_patterns)):
-        assert best_patterns[i][1] == correct_result[i][1]
+    # Check that the right varieties are not resolved
+    unresolved = get_unresolved(patterns, best_patterns)
+
+    correct_unresolved = [('Willy', 'Connie_2270')]
+
+    assert unresolved == correct_unresolved
 
 
 if __name__ == "__main__":

@@ -61,7 +61,7 @@ def test_minimal_markers():
     # This last test is a bit fragile - it is possible that a slightly
     # different ordering can lead to a different number of patterns
     # found
-    assert(len(best_patterns) == len(correct_result)+1)
+    assert(len(best_patterns) == len(correct_result))
 
     # Again, this is a fragile test as different ordering or different
     # selection of a duplicate could lead to a different final result

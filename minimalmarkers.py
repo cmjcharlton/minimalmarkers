@@ -1122,6 +1122,38 @@ def find_best_patterns(patterns: Patterns,
     return best_patterns
 
 
+def write_markers_to_file(filename: str,
+                          patterns: Patterns,
+                          best_patterns: _List[_Tuple[int, int]]):
+    """Write the selected markers in 'best_patterns' from 'patterns'
+       to the output file 'filename'.
+    """
+    with open(filename, "w") as FILE:
+        FILE.write("CumulativeResolved\tMarkerID\tGenotypePattern\n")
+
+        for idx, score in best_patterns:
+            pid = patterns.ids[idx]
+            pattern = patterns.get_pattern_as_string(idx)
+            FILE.write(f"{score}\t{pid}\t{pattern}\n")
+
+
+def write_markers_with_headers_to_file(filename: str,
+                                       patterns: Patterns,
+                                       best_patterns: _List[_Tuple[int, int]]):
+    """Write the selected markers in 'best_patterns' from 'patterns'
+       to the output file 'filename'
+    """
+    with open(filename, "w") as FILE:
+        header = "\t".join(patterns.varieties)
+        FILE.write(f"ID\t{header}\n")
+
+        for idx, _ in best_patterns:
+            FILE.write(f"{patterns.ids[idx]}\t")
+            FILE.write("\t".join([str(x) if x >= 0 else "x"
+                                  for x in patterns.patterns[idx]]))
+            FILE.write("\n")
+
+
 if __name__ == "__main__":
     import argparse
 
@@ -1205,20 +1237,9 @@ if __name__ == "__main__":
     import os
     base = os.path.splitext(input_file)[0]
 
-    with open(f"{base}_minimal_markers.txt", "w") as FILE:
-        FILE.write("CumulativeResolved\tMarkerID\tGenotypePattern\n")
+    write_markers_to_file(f"{base}_minimal_markers.txt",
+                          patterns, best_patterns)
 
-        for idx, score in best_patterns:
-            pid = patterns.ids[idx]
-            pattern = patterns.get_pattern_as_string(idx)
-            FILE.write(f"{score}\t{pid}\t{pattern}\n")
-
-    with open(f"{base}_selected_markers_with_headers.txt", "w") as FILE:
-        header = "\t".join(patterns.varieties)
-        FILE.write(f"ID\t{header}\n")
-
-        for idx, _ in best_patterns:
-            FILE.write(f"{patterns.ids[idx]}\t")
-            FILE.write("\t".join([str(x) if x >= 0 else "x"
-                                  for x in patterns.patterns[idx]]))
-            FILE.write("\n")
+    write_markers_with_headers_to_file(
+        f"{base}_selected_markers_with_headers.txt",
+        patterns, best_patterns)

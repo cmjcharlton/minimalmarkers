@@ -123,7 +123,8 @@ python minimalmarkers.py --help
 ## Use as a library / module
 
 The functions in this script have been written to be usable as a
-module. To import the module, use;
+module, so that you can use it, e.g. in a Jupyter notebook or
+as part of a larger program. To import the module, use;
 
 ```python
 import minimalmarkers
@@ -146,6 +147,10 @@ The module provides the following functions:
    `find_best_patterns`.
 * `convert_vcf_to_genotypes` : Convert an input file in VCF format into
    Genotypes format.
+* `write_markers_to_file` : Write the selected markers to an output file.
+* `write_markers_with_headers_to_file` : Write the selected markers
+   to an output file, including the headers. This file could be used as
+   an input for another run.
 
 ## Environment variables
 

@@ -71,6 +71,9 @@ try:
         raise ImportError("Disabling progress bars")
 
     from tqdm import tqdm as _progress_bar
+
+    # This will fail on older versions of tqdm
+    _p = _progress_bar(range(1, 10), unit="patterns", delay=1)
 except Exception:
     _progress_bar = _no_progress_bar
 

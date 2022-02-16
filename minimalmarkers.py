@@ -727,13 +727,40 @@ def _first_score_patterns(patterns, skip_patterns,
     return scores
 
 
+@_numba.jit(nopython=True, cache=True)
+def _unmatched_element_indices(pattern, expected_size):
+    """Calculate the co-ordinates of the elements with value
+       zero in the matrix corresponding to the passed in pattern.
+       Returns
+       =======
+            indices : N x 2 numpy array containing row/column of each zero
+    """
+    indices = _np.empty((expected_size, 2), dtype=_np.int64)
+    nele: int = pattern.size
+    idx: int = 0 # shared across iterations, so can't parallelise the loops
+    for i in range(0, nele):
+        ival: int = pattern[i]
+        for j in range(0, i):
+            jval: int = pattern[j]
+            if ival == -1 or jval == -1 or ival == jval:
+                indices[idx, 0] = i
+                indices[idx, 1] = j
+                idx += 1
+
+    if idx != expected_size:
+        print(f'{idx} does not match expected number of elements ({expected_size})')
+
+    return indices
+
+
 @_numba.jit(nopython=True, nogil=True, fastmath=True,
             parallel=True, cache=True)
-def _chunked_rescore_patterns(patterns, matrix, skip_patterns,
+def _chunked_rescore_patterns(patterns, indices, skip_patterns,
                               scores, sorted_idxs,
                               best_score: int,
                               start: int, end: int):
     ncols: int = patterns.shape[1]
+    nidx: int = indices.shape[0]
 
     nthreads: int = _numba.config.NUMBA_NUM_THREADS
 
@@ -762,15 +789,13 @@ def _chunked_rescore_patterns(patterns, matrix, skip_patterns,
             # this pattern could be the best scoring pattern...
             score: int = 0
 
-            for i in range(0, ncols):
+            for idx in range(0, nidx):
+                i: int = indices[idx, 0]
+                j: int  = indices[idx, 1]
                 ival: int = patterns[p, i]
-
-                if ival != -1:
-                    for j in range(i+1, ncols):
-                        jval: int = patterns[p, j]
-
-                        score += (jval != -1 and ival != jval and
-                                  matrix[i, j] == 0)
+                jval: int = patterns[p, j]
+                if ival != -1 and jval != -1 and ival != jval:
+                    score += 1
 
             scores[p] = score
 
@@ -791,7 +816,7 @@ def _chunked_rescore_patterns(patterns, matrix, skip_patterns,
     return best_score
 
 
-def _rescore_patterns(patterns, matrix, skip_patterns, scores, sorted_idxs,
+def _rescore_patterns(patterns, indices, skip_patterns, scores, sorted_idxs,
                       print_progress: bool = False):
     """Do the work of scoring all of the passed patterns against
        the current value of the matrix. This returns a tuple
@@ -823,13 +848,41 @@ def _rescore_patterns(patterns, matrix, skip_patterns, scores, sorted_idxs,
                       unit="patterns", unit_scale=chunk_size):
         start: int = i * chunk_size
         end: int = min((i+1)*chunk_size, npatterns)
-        best_score: int = _chunked_rescore_patterns(patterns, matrix,
+        best_score: int = _chunked_rescore_patterns(patterns, indices,
                                                     skip_patterns,
                                                     scores, sorted_idxs,
                                                     best_score,
                                                     start, end)
 
     return _np.argsort(scores)[::-1]
+
+
+@_numba.jit(nopython=True, cache=True)
+def _remove_matched_indices(data, indices, num_fewer):
+    """Removes indices from the input array corresponding to
+       ones in the matrix generated from the data array
+       Returns
+       =======
+            new_indices : N x 2 numpy array containing the new indices
+    """
+    num_old: int = indices.shape[0]
+    new_size: int = num_old - num_fewer
+    nrows: int = data.shape[0]
+    new_indices = _np.empty((new_size, 2), dtype=_np.int64)
+    new_idx: int = 0 # shared accross iterations, so can't parallelise the loop
+    for old_idx in range(0, num_old):
+        i: int = indices[old_idx, 0]
+        j: int = indices[old_idx, 1]
+        ival: int = data[i]
+        jval: int = data[j]
+        if ival == -1 or jval == -1 or ival == jval:
+            new_indices[new_idx] = [i, j]
+            new_idx += 1
+
+    if new_idx != new_size:
+        print(f'{new_idx} does not match expected number of elements ({new_size})')
+
+    return new_indices
 
 
 @_numba.jit(nopython=True, fastmath=True, nogil=True,
@@ -1014,9 +1067,13 @@ def find_best_patterns(patterns: Patterns,
     scores[best_pattern] = 0
     skip_patterns[best_pattern] = 1
 
-    # create the matrix showing which varieties can be distinguished
-    matrix = _np.zeros((ncols, ncols), _np.int8)
-    matrix = _create_matrix(patterns.patterns[best_pattern], matrix)
+
+    # number of elements that can still distinguish varieties
+    nremain = perfect_score - best_score
+
+    # create a list indicies representing a sparse matrix containing the elements
+    # can be still be used to distinguish varieties
+    remaining_indices = _unmatched_element_indices(patterns.patterns[best_pattern], nremain)
 
     if print_progress:
         pattern = _get_pattern_from_array(patterns.patterns[best_pattern])
@@ -1033,7 +1090,7 @@ def find_best_patterns(patterns: Patterns,
     while current_score > 0:
         iteration += 1
 
-        sorted_idxs = _rescore_patterns(patterns.patterns, matrix,
+        sorted_idxs = _rescore_patterns(patterns.patterns, remaining_indices,
                                         skip_patterns, scores, sorted_idxs,
                                         print_progress)
 
@@ -1048,9 +1105,7 @@ def find_best_patterns(patterns: Patterns,
             scores[best_pattern] = 0
             skip_patterns[best_pattern] = 1
 
-            matrix += _create_matrix(patterns.patterns[best_pattern],
-                                     matrix)
-
+            remaining_indices = _remove_matched_indices(patterns.patterns[best_pattern], remaining_indices, best_score)
             if print_progress:
                 pattern = _get_pattern_from_array(
                                 patterns.patterns[best_pattern])

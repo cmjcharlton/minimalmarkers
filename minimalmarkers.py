@@ -666,14 +666,24 @@ def _chunked_first_score_patterns(patterns, skip_patterns,
         if not skip_patterns[p]:
             score: int = 0
 
+            # If we were to sort the rows by value the resulting scoring
+            # matrix would be a matrix of ones, with a block diagonal of 
+            # zeros, each block being having the dimension corresponding to
+            # the count of the identifer. We can therefore skip the O(n^2)
+            # visiting each element and instead calculate the score directly.
+            bins = _np.zeros(4, _np.int32)
             for i in range(0, ncols):
-                ival: int = patterns[p, i]
-
-                if ival != -1:
-                    for j in range(i+1, ncols):
-                        jval: int = patterns[p, j]
-                        score += (jval != -1 and ival != jval)
-
+                # Here we take advantage of the identifiers being -1, 0, 1, 2 to
+                # use them to directly index the counter. We take advanage of
+                # wrap-around indexing so that -1 ends up in index 3.
+                # We could instead have used numpy.bincount, but then
+                # we would have to recode or remove -1 values first.
+                bins[patterns[p, i]] += 1
+            # We skip the invalid -1 code by ignoring the last bin value in this
+            # calculation.
+            # Note that we divide by two here as we have calculated for the full
+            # matrix, but we only want to use half.
+            score = (_np.square(_np.sum(bins[:-1])) - _np.sum(_np.square(bins[:-1]))) // 2
             scores[p] = score
 
             if score == 0:

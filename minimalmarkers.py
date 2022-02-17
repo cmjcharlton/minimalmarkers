@@ -679,11 +679,11 @@ def _chunked_first_score_patterns(patterns, skip_patterns,
                 # We could instead have used numpy.bincount, but then
                 # we would have to recode or remove -1 values first.
                 bins[patterns[p, i]] += 1
+            # Examining the matrix we can see that the score can be calculated directly as:
+            score = bins[0] * bins[1] + (bins[0] + bins[1]) * bins[2]
+            # If we wanted to handle more than three groups this formula could be extended
             # We skip the invalid -1 code by ignoring the last bin value in this
             # calculation.
-            # Note that we divide by two here as we have calculated for the full
-            # matrix, but we only want to use half.
-            score = (_np.square(_np.sum(bins[:-1])) - _np.sum(_np.square(bins[:-1]))) // 2
             scores[p] = score
 
             if score == 0:

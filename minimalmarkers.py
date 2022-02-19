@@ -756,67 +756,40 @@ def _unmatched_element_indices(pattern, expected_size):
 @_numba.jit(nopython=True, nogil=True, fastmath=True,
             parallel=True, cache=True)
 def _chunked_rescore_patterns(patterns, indices, skip_patterns,
-                              scores, sorted_idxs,
-                              best_score: int,
+                              scores, 
                               start: int, end: int):
     ncols: int = patterns.shape[1]
     nidx: int = indices.shape[0]
 
-    nthreads: int = _numba.config.NUMBA_NUM_THREADS
+    best_score = 0 # thread local variable
 
-    best_scores = _np.zeros(nthreads, _np.int32)
+    for p in _numba.prange(start, end):
+        if skip_patterns[p]:
+            continue
+        if scores[p] < best_score: # No point in calculating score, as it was lower than best_score in previous iterations
+            continue
 
-    for thread_id in _numba.prange(0, nthreads):
-        my_best_score: int = best_score
+        # this pattern could be the best scoring pattern...
+        score: int = 0
 
-        for chunk in range(start, end, nthreads):
-            idx: int = chunk + thread_id
+        for idx in range(0, nidx):
+            i: int = indices[idx, 0]
+            j: int  = indices[idx, 1]
+            ival: int = patterns[p, i]
+            jval: int = patterns[p, j]
+            if ival != -1 and jval != -1 and ival != jval:
+                score += 1
 
-            if idx >= end:
-                break
+        scores[p] = score
 
-            p: int = sorted_idxs[idx]
+        if score == 0:
+            skip_patterns[p] = 1
 
-            if skip_patterns[p]:
-                continue
-
-            current_score: int = scores[p]
-
-            if current_score < my_best_score:
-                # there are no more patterns with a better score
-                break
-
-            # this pattern could be the best scoring pattern...
-            score: int = 0
-
-            for idx in range(0, nidx):
-                i: int = indices[idx, 0]
-                j: int  = indices[idx, 1]
-                ival: int = patterns[p, i]
-                jval: int = patterns[p, j]
-                if ival != -1 and jval != -1 and ival != jval:
-                    score += 1
-
-            scores[p] = score
-
-            if score == 0:
-                skip_patterns[p] = 1
-
-            if score > my_best_score:
-                my_best_score = score
-
-        best_scores[thread_id] = my_best_score
-
-    best_score = 0
-
-    for score in best_scores:
         if score > best_score:
             best_score = score
 
-    return best_score
 
-
-def _rescore_patterns(patterns, indices, skip_patterns, scores, sorted_idxs,
+def _rescore_patterns(patterns, indices, skip_patterns, scores, 
                       print_progress: bool = False):
     """Do the work of scoring all of the passed patterns against
        the current value of the matrix. This returns a tuple
@@ -842,19 +815,14 @@ def _rescore_patterns(patterns, indices, skip_patterns, scores, sorted_idxs,
         chunk_size = npatterns
         progress = _no_progress_bar
 
-    best_score: int = 0
-
     for i in progress(range(0, nchunks), delay=1,
                       unit="patterns", unit_scale=chunk_size):
         start: int = i * chunk_size
         end: int = min((i+1)*chunk_size, npatterns)
-        best_score: int = _chunked_rescore_patterns(patterns, indices,
-                                                    skip_patterns,
-                                                    scores, sorted_idxs,
-                                                    best_score,
-                                                    start, end)
-
-    return _np.argsort(scores)[::-1]
+        _chunked_rescore_patterns(patterns, indices,
+                                  skip_patterns,
+                                  scores, 
+                                  start, end)
 
 
 @_numba.jit(nopython=True, cache=True)
@@ -1050,13 +1018,8 @@ def find_best_patterns(patterns: Patterns,
     scores = _first_score_patterns(patterns.patterns, skip_patterns,
                                    print_progress)
 
-    # get the sorted list of these scores - this is an array of indicies
-    # into the scores / patterns lists
-    sorted_idxs = _np.argsort(scores)[::-1]
-
-    # the first pattern is the best one
     iteration: int = 1
-    best_pattern = sorted_idxs[0]
+    best_pattern = _np.argmax(scores)
     best_score: int = scores[best_pattern]
     best_patterns = [(best_pattern, best_score)]
     cumulative_score: int = best_score
@@ -1090,11 +1053,11 @@ def find_best_patterns(patterns: Patterns,
     while current_score > 0:
         iteration += 1
 
-        sorted_idxs = _rescore_patterns(patterns.patterns, remaining_indices,
-                                        skip_patterns, scores, sorted_idxs,
+        _rescore_patterns(patterns.patterns, remaining_indices,
+                                        skip_patterns, scores, 
                                         print_progress)
 
-        best_pattern = sorted_idxs[0]
+        best_pattern = _np.argmax(scores)
         best_score = scores[best_pattern]
 
         if best_score > 0:

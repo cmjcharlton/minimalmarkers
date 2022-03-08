@@ -747,8 +747,7 @@ def _unmatched_element_indices(pattern, expected_size):
                 indices[idx, 1] = j
                 idx += 1
 
-    if idx != expected_size:
-        print(f'{idx} does not match expected number of elements ({expected_size})')
+    assert(idx == expected_size)
 
     return indices
 

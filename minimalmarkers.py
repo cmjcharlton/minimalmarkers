@@ -878,8 +878,7 @@ def _remove_matched_indices(data, indices, num_fewer):
             new_indices[new_idx] = [i, j]
             new_idx += 1
 
-    if new_idx != new_size:
-        print(f'{new_idx} does not match expected number of elements ({new_size})')
+    assert(new_idx == new_size)
 
     return new_indices
 

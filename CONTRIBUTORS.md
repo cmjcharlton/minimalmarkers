@@ -13,3 +13,7 @@ Here is the list of current contributions to this project.
 * [Gary Barker](https://github.com/pr0kary0te)
     Wrote the original Perl scripts and created the original
     repository.
+
+* [Chris Charlton](https://github.com/cmjcharlton)
+    Optimised the scoring algorithm, significantly
+    speeding up the code.

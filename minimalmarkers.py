@@ -721,8 +721,7 @@ def _unmatched_element_indices(pattern, expected_size):
                 indices[idx, 1] = j
                 idx += 1
 
-    if idx != expected_size:
-        print(f'{idx} does not match expected number of elements ({expected_size})')
+    assert(idx == expected_size)
 
     return indices
 
@@ -853,8 +852,7 @@ def _remove_matched_indices(data, indices, num_fewer):
             new_indices[new_idx] = [i, j]
             new_idx += 1
 
-    if new_idx != new_size:
-        print(f'{new_idx} does not match expected number of elements ({new_size})')
+    assert(new_idx == new_size)
 
     return new_indices
 

@@ -561,39 +561,23 @@ def load_patterns(input_file: str,
 
 @_numba.jit(nopython=True, nogil=True, fastmath=True,
             parallel=True, cache=True)
-def _calculate_best_possible_score(patterns, thread_matrix,
-                                   start: int, end: int):
+def _calculate_best_possible_score(patterns, start: int, end: int):
     """Calculate the best possible score that could be achieved
        using all of the patterns
     """
-    ncols: int = patterns.shape[1]
+    npatterns: int = patterns.shape[0]
 
-    nthreads: int = _numba.config.NUMBA_NUM_THREADS
-    chunk_size: int = int((end - start) / nthreads) + 1
-
-    for thread_id in _numba.prange(0, nthreads):
-        matrix = thread_matrix[thread_id]
-
-        for p in range(start + thread_id*chunk_size,
-                       min(end, start + (thread_id+1)*chunk_size)):
-            for i in range(0, ncols):
+    score: int = 0 # reduction variable
+    # see http://numba.pydata.org/numba-doc/0.12.1/prange.html?highlight=parallel
+    # for variable privatization rules
+    for i in _numba.prange(start, end):
+        for j in range(0, i):
+            for p in range(0, npatterns):
                 ival: int = patterns[p, i]
-
-                if ival != -1:
-                    for j in range(i+1, ncols):
-                        jval: int = patterns[p, j]
-
-                        if jval != -1 and ival != jval:
-                            matrix[i, j] = 1
-
-    score: int = 0
-
-    for i in range(0, ncols):
-        for j in range(i+1, ncols):
-            for t in range(0, nthreads):
-                if thread_matrix[t, i, j] != 0:
+                jval: int = patterns[p, j]
+                if ival != -1 and jval != -1 and ival != jval:
                     score += 1
-                    break
+                    break # stop early if cell contains a one
 
     return score
 
@@ -616,42 +600,32 @@ def calculate_best_possible_score(patterns: Patterns,
 
     patterns = patterns.patterns
 
-    npatterns: int = patterns.shape[0]
     ncols: int = patterns.shape[1]
-    perfect_score: int = int((ncols * (ncols-1)) / 2)
 
     if print_progress:
-        chunk_size = min(_MIN_CHUNK_SIZE, npatterns)
+        chunk_size = min(_MIN_CHUNK_SIZE, ncols)
         progress = _progress_bar
     else:
-        chunk_size = npatterns
+        chunk_size = ncols
         progress = _no_progress_bar
 
-    nchunks: int = int(npatterns / chunk_size)
+    nchunks: int = int(ncols / chunk_size)
 
-    while nchunks*chunk_size < npatterns:
+    while nchunks*chunk_size < ncols:
         nchunks += 1
 
     if nchunks < 4:
         nchunks = 1
-        chunk_size = npatterns
+        chunk_size = ncols
         progress = _no_progress_bar
 
-    nthreads: int = _numba.config.NUMBA_NUM_THREADS
-
-    thread_matrix = _np.zeros((nthreads, ncols, ncols))
+    score: int = 0
 
     for i in progress(range(0, nchunks), delay=1,
-                      unit="patterns", unit_scale=chunk_size):
+                      unit="variety", unit_scale=chunk_size):
         start: int = i * chunk_size
-        end: int = min((i+1)*chunk_size, npatterns)
-        score: int = _calculate_best_possible_score(patterns, thread_matrix,
-                                                    start, end)
-
-        if score == perfect_score:
-            if print_progress:
-                print(f"Exiting early as a perfect score is possible!")
-            return score
+        end: int = min((i+1)*chunk_size, ncols)
+        score += _calculate_best_possible_score(patterns, start, end)
 
     return score
 
